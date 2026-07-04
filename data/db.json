@@ -1,0 +1,485 @@
+{
+  "clients": [
+    {
+      "id": "demo-client",
+      "name": "Cliente ejemplo",
+      "phone": "59170000000",
+      "document": "000000",
+      "notes": "Puedes cambiar o borrar este ejemplo.",
+      "createdAt": "2026-07-04T19:16:24.773Z"
+    },
+    {
+      "id": "eb2cd347-fe65-4d03-a2e3-04b2fe68a510",
+      "name": "Moises Cuevas",
+      "phone": "18094139548",
+      "document": "",
+      "notes": "",
+      "createdAt": "2026-07-04T19:53:30.642Z"
+    }
+  ],
+  "loans": [
+    {
+      "id": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "clientId": "eb2cd347-fe65-4d03-a2e3-04b2fe68a510",
+      "principal": 30000,
+      "interestRate": 20,
+      "total": 36000,
+      "installments": 50,
+      "frequency": "biweekly",
+      "startDate": "2026-07-04",
+      "createdAt": "2026-07-04T19:54:41.402Z"
+    }
+  ],
+  "payments": [
+    {
+      "id": "a871c3db-ade1-4e2b-8740-f150d6610036",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 1,
+      "dueDate": "2026-07-19",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "f8871bab-96b9-4479-9bf4-47af0d8e3203",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 2,
+      "dueDate": "2026-08-03",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "f5e4fd4e-785d-41c6-a76a-0d59b88b0f21",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 3,
+      "dueDate": "2026-08-18",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "10758b62-6774-4831-abef-227c0326f119",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 4,
+      "dueDate": "2026-09-02",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "96804dcb-6bb9-4389-9882-d81ba5982c16",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 5,
+      "dueDate": "2026-09-17",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "55598e8a-e1f5-4c4c-a496-b732afe404c3",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 6,
+      "dueDate": "2026-10-02",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "e2435182-83ac-45fd-b945-4b1d54724982",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 7,
+      "dueDate": "2026-10-17",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "8d387570-e573-4a4c-b9b9-6890763268e4",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 8,
+      "dueDate": "2026-11-01",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "85473d0a-8598-4206-8e86-05c897b4e5f9",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 9,
+      "dueDate": "2026-11-16",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "ba9f4b1a-0601-433a-88e3-c04e2a40bfe6",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 10,
+      "dueDate": "2026-12-01",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "3ef00a0a-99e8-47f1-a52c-c643bc689506",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 11,
+      "dueDate": "2026-12-16",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "842749ba-a440-4148-b5a0-fd7c7e945e50",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 12,
+      "dueDate": "2026-12-31",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "86257d7a-1fd4-43e6-ba3a-b02661fb431c",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 13,
+      "dueDate": "2027-01-15",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "ddc35bd8-3c1c-4445-b9dc-d2110b1eee58",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 14,
+      "dueDate": "2027-01-30",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "3bbb33e9-8cd3-4aba-a1d9-341ba799f014",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 15,
+      "dueDate": "2027-02-14",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "4a282509-0d6c-443f-b606-f9aec2756825",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 16,
+      "dueDate": "2027-03-01",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "963788d2-bb3f-4553-b819-78eee4d3fb79",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 17,
+      "dueDate": "2027-03-16",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "f6816c18-e8e6-4e85-9faa-49d68759789b",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 18,
+      "dueDate": "2027-03-31",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "dcade8f6-cb99-4f89-8f8b-5ee6b828cfef",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 19,
+      "dueDate": "2027-04-15",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "5b7b5f98-4959-4045-9d50-46d0d62f4186",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 20,
+      "dueDate": "2027-04-30",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "d2e90d60-3cb5-43af-a2b1-2ca5d1db1d20",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 21,
+      "dueDate": "2027-05-15",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "a22d26da-e72a-4e33-87b7-0fd6634dc137",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 22,
+      "dueDate": "2027-05-30",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "7960e7b3-ad0b-46de-90b3-f1e57c4a80cb",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 23,
+      "dueDate": "2027-06-14",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "4171b36c-2736-46b7-afea-70d747714503",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 24,
+      "dueDate": "2027-06-29",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "d2c6f1cb-6604-4703-90c8-651386bb14c7",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 25,
+      "dueDate": "2027-07-14",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "8003ee1a-d78e-4ef2-9171-bfbb631510d3",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 26,
+      "dueDate": "2027-07-29",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "61028eee-22a8-4cb5-aa4f-e8e973cf9c9c",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 27,
+      "dueDate": "2027-08-13",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "b9c54c32-a119-4731-9c22-53388adad375",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 28,
+      "dueDate": "2027-08-28",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "8476a940-b4d5-48eb-a0f7-27a1af84e4b6",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 29,
+      "dueDate": "2027-09-12",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "8b448135-84a7-46e9-81fc-fe599b0d29d2",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 30,
+      "dueDate": "2027-09-27",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "ee1fd62d-837c-4a39-bfad-aa95283c3890",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 31,
+      "dueDate": "2027-10-12",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "26318fe2-85cd-4f67-a1b2-aef77918f9ff",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 32,
+      "dueDate": "2027-10-27",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "69388276-0150-46e4-9d59-9b00d231cb60",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 33,
+      "dueDate": "2027-11-11",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "62a89d17-cdd0-4c2f-9672-1ab2a6dcb720",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 34,
+      "dueDate": "2027-11-26",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "aaefeb67-907a-4f44-9156-2868854c6825",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 35,
+      "dueDate": "2027-12-11",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "fd3a3b0b-93a9-4631-9b58-7c85c5d011a5",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 36,
+      "dueDate": "2027-12-26",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "b1f77994-f1a4-4c63-8375-f11f665dc60a",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 37,
+      "dueDate": "2028-01-10",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "eb34ae0e-3397-4adc-9779-f8a7df8c1384",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 38,
+      "dueDate": "2028-01-25",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "c23399e5-1502-447a-b0e9-d3ac27398176",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 39,
+      "dueDate": "2028-02-09",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "6fff3ba1-749d-4eae-a24f-2dda621f9b9d",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 40,
+      "dueDate": "2028-02-24",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "552ccd2f-c290-4678-a301-efe84d4d33e8",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 41,
+      "dueDate": "2028-03-10",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "853e3d02-0489-4d2a-8439-ca62270a9813",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 42,
+      "dueDate": "2028-03-25",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "577f4b34-c3e4-4579-8c26-dedb0277c83d",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 43,
+      "dueDate": "2028-04-09",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "1a62f394-988b-4b3d-a230-93267b29d598",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 44,
+      "dueDate": "2028-04-24",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "2555f23a-5740-41af-9cdb-5552d43f35d2",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 45,
+      "dueDate": "2028-05-09",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "aa4a1e35-e77c-4049-80a9-b4c3bead00d9",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 46,
+      "dueDate": "2028-05-24",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "801fa2bf-2482-40f5-9d46-ecf3e53b2c63",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 47,
+      "dueDate": "2028-06-08",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "b3fb49af-d922-498d-b904-ea1c64aa5da1",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 48,
+      "dueDate": "2028-06-23",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "df1a3309-f5a5-46dd-9e2f-59af68430b28",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 49,
+      "dueDate": "2028-07-08",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    },
+    {
+      "id": "c72dce5e-e581-4c7f-8fed-7c4b3a16a86e",
+      "loanId": "4376668b-0cf0-4bb8-8f87-f33a745a7a8f",
+      "number": 50,
+      "dueDate": "2028-07-23",
+      "amount": 720,
+      "paid": false,
+      "paidAt": ""
+    }
+  ]
+}

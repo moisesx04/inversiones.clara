@@ -1,0 +1,52 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  document  String   @default("")
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  loans     Loan[]
+
+  @@map("clients")
+}
+
+model Loan {
+  id           String    @id @default(uuid())
+  clientId     String
+  principal    Float
+  interestRate Float
+  total        Float
+  installments Int
+  frequency    String
+  startDate    String
+  createdAt    DateTime  @default(now())
+  client       Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+
+  @@map("loans")
+}
+
+model Payment {
+  id      String  @id @default(uuid())
+  loanId  String
+  number  Int
+  dueDate String
+  amount  Float
+  paid    Boolean @default(false)
+  paidAt  String  @default("")
+  loan    Loan    @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}

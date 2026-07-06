@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Clara Inversiones | Prestamos",
-  description: "Sistema responsivo para administrar prestamos, pagos, clientes y ganancias.",
+  title: "Clara Inversiones | Préstamos",
+  description: "Sistema responsivo para administrar préstamos, pagos, clientes y ganancias.",
 };
 
 export default function RootLayout({

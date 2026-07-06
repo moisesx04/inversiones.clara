@@ -27,6 +27,9 @@ export type Payment = {
   amount: number;
   paid: boolean;
   paidAt: string;
+  paidMode?: "interest" | "capital" | "both";
+  paidInterest?: number;
+  paidCapital?: number;
 };
 
 export type StoreState = {

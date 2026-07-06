@@ -54,6 +54,7 @@ import {
 
 const storeKey = "clara-next-prestamos-v1";
 const sessionKey = "clara-session-v1";
+const passwordKey = "clara-admin-password-v1";
 
 const initialState: StoreState = {
   clients: [
@@ -85,7 +86,11 @@ export default function Home() {
   const [state, setState]               = useState<StoreState>(initialState);
   const [activeTab, setActiveTab]       = useState("inicio");
   const [clientSearch, setClientSearch] = useState("");
+  const [loanSearch, setLoanSearch]     = useState("");
+  const [paymentSearch, setPaymentSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("pending");
+  const [selectedPaymentId, setSelectedPaymentId] = useState("");
+  const [paymentMode, setPaymentMode] = useState<"interest" | "capital" | "both">("both");
   const [reminderDays, setReminderDays] = useState("2");
   const [clientOpen, setClientOpen]     = useState(false);
   const [loanOpen, setLoanOpen]         = useState(false);
@@ -101,10 +106,28 @@ export default function Home() {
   useEffect(() => {
     setIsAuthed(sessionStorage.getItem(sessionKey) === "ok");
     const saved = localStorage.getItem(storeKey);
-    if (saved) setState(JSON.parse(saved) as StoreState);
+    const savedState = saved ? (JSON.parse(saved) as StoreState) : null;
+    if (savedState) setState(savedState);
     fetch("/api/loans")
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: StoreState | null) => { if (data?.clients?.length) setState(data); })
+      .then((data: StoreState | null) => {
+        if (!data?.clients?.length) return;
+        const localPayments = new Map((savedState?.payments || []).map((payment) => [payment.id, payment]));
+        setState({
+          ...data,
+          payments: data.payments.map((payment) => {
+            const local = localPayments.get(payment.id);
+            return local
+              ? {
+                  ...payment,
+                  paidMode: local.paidMode,
+                  paidInterest: local.paidInterest,
+                  paidCapital: local.paidCapital,
+                }
+              : payment;
+          }),
+        });
+      })
       .catch(() => null)
       .finally(() => setReady(true));
   }, []);
@@ -135,13 +158,27 @@ export default function Home() {
     const total       = sum(state.loans.map((l) => l.total));
     const paidTotal   = sum(state.payments.filter((p) => p.paid).map((p) => p.amount));
     const principalPaid = sum(state.loans.map((l) => Math.min(l.principal, loanPaidTotal(state.payments, l.id))));
+    const overduePayments = state.payments.filter((p) => !p.paid && isLate(p.dueDate));
+    const pendingPayments = state.payments.filter((p) => !p.paid);
+    const pendingClientIds = new Set(
+      pendingPayments
+        .map((payment) => state.loans.find((loan) => loan.id === payment.loanId)?.clientId)
+        .filter(Boolean),
+    );
+    const interestWithBreakdown = sum(state.payments.filter((p) => p.paid).map((p) => p.paidInterest || 0));
     return {
       principal,
       balance:        total - paidTotal,
       expectedProfit: total - principal,
       paidProfit:     Math.max(0, paidTotal - principalPaid),
+      profit:          interestWithBreakdown > 0 ? interestWithBreakdown : Math.max(0, paidTotal - principalPaid),
       paidTotal,
       total,
+      overdueBalance: sum(overduePayments.map((p) => p.amount)),
+      overdueCount: overduePayments.length,
+      pendingCount: pendingPayments.length,
+      pendingPeople: pendingClientIds.size,
+      collectionRate: total > 0 ? Math.round((paidTotal / total) * 100) : 0,
     };
   }, [state]);
 
@@ -155,6 +192,14 @@ export default function Home() {
     return state.clients.filter((c) => `${c.name} ${c.phone} ${c.document}`.toLowerCase().includes(q));
   }, [clientSearch, state.clients]);
 
+  const filteredLoans = useMemo(() => {
+    const q = loanSearch.trim().toLowerCase();
+    return state.loans.filter((loan) => {
+      const client = state.clients.find((c) => c.id === loan.clientId);
+      return `${client?.name || ""} ${client?.phone || ""} ${loan.principal} ${loan.total}`.toLowerCase().includes(q);
+    });
+  }, [loanSearch, state.clients, state.loans]);
+
   const visiblePayments = useMemo(
     () =>
       state.payments
@@ -164,8 +209,15 @@ export default function Home() {
           if (paymentFilter === "late")    return !p.paid && isLate(p.dueDate);
           return !p.paid;
         })
+        .filter((p) => {
+          const q = paymentSearch.trim().toLowerCase();
+          if (!q) return true;
+          const loan = state.loans.find((l) => l.id === p.loanId);
+          const client = state.clients.find((c) => c.id === loan?.clientId);
+          return `${client?.name || ""} ${client?.phone || ""} ${p.number} ${p.dueDate} ${p.amount}`.toLowerCase().includes(q);
+        })
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [paymentFilter, state.payments],
+    [paymentFilter, paymentSearch, state.clients, state.loans, state.payments],
   );
 
   const reminderPayments = useMemo(() => dueSoonPayments(state, Number(reminderDays || 0)), [reminderDays, state]);
@@ -202,10 +254,18 @@ export default function Home() {
   // ── Handlers ─────────────────────────────────────────────────
   async function handleLogin(formData: FormData) {
     setLoginError("");
+    const user = String(formData.get("user") || "");
+    const password = String(formData.get("password") || "");
+    const savedPassword = localStorage.getItem(passwordKey);
+    if (user === "admin" && savedPassword && password === savedPassword) {
+      sessionStorage.setItem(sessionKey, "ok");
+      setIsAuthed(true);
+      return;
+    }
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user: String(formData.get("user") || ""), password: String(formData.get("password") || "") }),
+      body: JSON.stringify({ user, password }),
     });
     if (!response.ok) { setLoginError("Usuario o clave incorrectos."); return; }
     sessionStorage.setItem(sessionKey, "ok");
@@ -214,13 +274,53 @@ export default function Home() {
 
   function logout() { sessionStorage.removeItem(sessionKey); setIsAuthed(false); }
 
+  function changePassword(formData: FormData) {
+    const current = String(formData.get("currentPassword") || "");
+    const next = String(formData.get("newPassword") || "");
+    const confirm = String(formData.get("confirmPassword") || "");
+    const savedPassword = localStorage.getItem(passwordKey) || "admin123";
+
+    if (current !== savedPassword) {
+      toast("Clave actual incorrecta", "Escribe la clave actual para poder cambiarla.", "error");
+      return;
+    }
+    if (next.length < 6) {
+      toast("Clave muy corta", "Usa al menos 6 caracteres.", "error");
+      return;
+    }
+    if (next !== confirm) {
+      toast("Las claves no coinciden", "Confirma la nueva clave correctamente.", "error");
+      return;
+    }
+    localStorage.setItem(passwordKey, next);
+    toast("Clave actualizada", "Desde ahora inicia sesion con la nueva clave.", "success");
+  }
+
   function addClient(formData: FormData) {
+    const name = String(formData.get("name") || "").trim();
+    const phone = String(formData.get("phone") || "").trim();
+    const document = String(formData.get("document") || "").trim();
+    const notes = String(formData.get("notes") || "").trim();
+
+    if (name.length < 2) {
+      toast("Nombre incompleto", "Escribe al menos 2 caracteres para guardar el cliente.", "error");
+      return;
+    }
+    if (phone.replace(/\D/g, "").length < 7) {
+      toast("Telefono invalido", "Agrega un numero con al menos 7 digitos.", "error");
+      return;
+    }
+    if (state.clients.some((client) => client.phone.replace(/\D/g, "") === phone.replace(/\D/g, ""))) {
+      toast("Cliente duplicado", "Ya existe un cliente con ese telefono.", "error");
+      return;
+    }
+
     const client: Client = {
       id: crypto.randomUUID(),
-      name: String(formData.get("name") || "").trim(),
-      phone: String(formData.get("phone") || "").trim(),
-      document: String(formData.get("document") || "").trim(),
-      notes: String(formData.get("notes") || "").trim(),
+      name,
+      phone,
+      document,
+      notes,
       createdAt: new Date().toISOString(),
     };
     setState((c) => ({ ...c, clients: [...c.clients, client] }));
@@ -232,13 +332,31 @@ export default function Home() {
     const principal    = Number(formData.get("principal") || 0);
     const interestRate = Number(formData.get("interestRate") || 0);
     const installments = Number(formData.get("installments") || 1);
+    const clientId     = String(formData.get("clientId") || "");
     const total        = roundMoney(principal + principal * (interestRate / 100));
     const amount       = roundMoney(total / installments);
     const loanId       = crypto.randomUUID();
     const frequency    = String(formData.get("frequency") || "weekly") as Loan["frequency"];
     const startDate    = String(formData.get("startDate") || new Date().toISOString().slice(0, 10));
 
-    const loan: Loan = { id: loanId, clientId: String(formData.get("clientId")), principal, interestRate, total, installments, frequency, startDate, createdAt: new Date().toISOString() };
+    if (!state.clients.some((client) => client.id === clientId)) {
+      toast("Cliente requerido", "Selecciona un cliente valido para el prestamo.", "error");
+      return;
+    }
+    if (!Number.isFinite(principal) || principal <= 0) {
+      toast("Capital invalido", "El capital prestado debe ser mayor que cero.", "error");
+      return;
+    }
+    if (!Number.isFinite(interestRate) || interestRate < 0 || interestRate > 1000) {
+      toast("Interes invalido", "Usa un porcentaje entre 0 y 1000.", "error");
+      return;
+    }
+    if (!Number.isInteger(installments) || installments < 1 || installments > 240) {
+      toast("Cuotas invalidas", "Usa entre 1 y 240 cuotas.", "error");
+      return;
+    }
+
+    const loan: Loan = { id: loanId, clientId, principal, interestRate, total, installments, frequency, startDate, createdAt: new Date().toISOString() };
     const payments: Payment[] = Array.from({ length: installments }, (_, i) => ({
       id: crypto.randomUUID(), loanId, number: i + 1,
       dueDate: addPeriod(startDate, frequency, i + 1),
@@ -251,11 +369,62 @@ export default function Home() {
     toast("Préstamo creado", "Las cuotas quedaron generadas automáticamente.", "success");
   }
 
-  function togglePayment(id: string) {
+  function loanBreakdown(loanId: string) {
+    const loan = findLoan(loanId);
+    const paidPayments = state.payments.filter((payment) => payment.loanId === loanId && payment.paid);
+    const paidInterest = sum(paidPayments.map((payment) => payment.paidInterest || 0));
+    const paidCapital = sum(paidPayments.map((payment) => payment.paidCapital || 0));
+    return {
+      paidInterest,
+      paidCapital,
+      remainingInterest: Math.max(0, (loan ? loan.total - loan.principal : 0) - paidInterest),
+      remainingCapital: Math.max(0, (loan?.principal || 0) - paidCapital),
+    };
+  }
+
+  function calculatePaymentSplit(payment: Payment, mode: "interest" | "capital" | "both") {
+    const breakdown = loanBreakdown(payment.loanId);
+    if (mode === "interest") {
+      return { paidInterest: roundMoney(payment.amount), paidCapital: 0 };
+    }
+    if (mode === "capital") {
+      return { paidInterest: 0, paidCapital: roundMoney(payment.amount) };
+    }
+    const paidInterest = roundMoney(Math.min(payment.amount, breakdown.remainingInterest));
+    return {
+      paidInterest,
+      paidCapital: roundMoney(payment.amount - paidInterest),
+    };
+  }
+
+  function openPaymentDialog(id: string) {
+    setPaymentMode("both");
+    setSelectedPaymentId(id);
+  }
+
+  function confirmPayment() {
+    const payment = state.payments.find((p) => p.id === selectedPaymentId);
+    if (!payment) return;
+    const split = calculatePaymentSplit(payment, paymentMode);
     setState((c) => ({
       ...c,
       payments: c.payments.map((p) =>
-        p.id === id ? { ...p, paid: !p.paid, paidAt: p.paid ? "" : new Date().toISOString() } : p,
+        p.id === selectedPaymentId
+          ? { ...p, paid: true, paidAt: new Date().toISOString(), paidMode: paymentMode, ...split }
+          : p,
+      ),
+    }));
+    setSelectedPaymentId("");
+    toast("Pago registrado", `Reditos: ${money(split.paidInterest)} · Capital: ${money(split.paidCapital)}.`, "success");
+  }
+
+  function unmarkPayment(id: string) {
+    setState((c) => ({
+      ...c,
+      payments: c.payments.map((p) =>
+        p.id === id
+          ? { ...p, paid: false, paidAt: "", paidMode: undefined, paidInterest: undefined, paidCapital: undefined }
+          : p,
       ),
     }));
   }
@@ -280,12 +449,56 @@ export default function Home() {
     toast("Datos exportados", "El archivo fue descargado correctamente.", "success");
   }
 
+  function exportPaymentsCsv() {
+    const rows = [
+      ["Cliente", "Telefono", "Prestamo", "Cuota", "Vence", "Monto", "Reditos", "Capital", "Tipo", "Estado", "Pagado el"],
+      ...state.payments
+        .slice()
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .map((payment) => {
+          const loan = findLoan(payment.loanId);
+          const client = findClient(loan?.clientId);
+          return [
+            client?.name || "Sin cliente",
+            client?.phone || "",
+            loan ? money(loan.total) : "",
+            String(payment.number),
+            payment.dueDate,
+            String(payment.amount),
+            String(payment.paidInterest || 0),
+            String(payment.paidCapital || 0),
+            payment.paidMode === "interest" ? "Reditos" : payment.paidMode === "capital" ? "Capital" : payment.paidMode === "both" ? "Ambos" : "",
+            payment.paid ? "Pagado" : isLate(payment.dueDate) ? "Atrasado" : "Pendiente",
+            payment.paidAt ? payment.paidAt.slice(0, 10) : "",
+          ];
+        }),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `clara-pagos-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast("Pagos exportados", "El CSV quedo listo para abrir en Excel.", "success");
+  }
+
   async function importData(file: File | null) {
     if (!file) return;
     try {
       const imported = JSON.parse(await file.text()) as StoreState;
       if (!Array.isArray(imported.clients) || !Array.isArray(imported.loans) || !Array.isArray(imported.payments)) {
         toast("Archivo inválido", "Selecciona un respaldo exportado por esta app.", "error"); return;
+      }
+      const clientIds = new Set(imported.clients.map((client) => client.id));
+      const loanIds = new Set(imported.loans.map((loan) => loan.id));
+      if (
+        imported.loans.some((loan) => !clientIds.has(loan.clientId)) ||
+        imported.payments.some((payment) => !loanIds.has(payment.loanId))
+      ) {
+        toast("Respaldo inconsistente", "Hay prestamos o pagos que no coinciden con sus clientes.", "error");
+        return;
       }
       setState(imported);
       toast("Datos importados", "El sistema fue actualizado con tu respaldo.", "success");
@@ -435,8 +648,8 @@ export default function Home() {
         {/* Brand */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
           <div>
-            <p className="text-[11px] font-extrabold uppercase tracking-widest text-blue-600">Clara</p>
-            <p className="text-2xl font-extrabold leading-tight text-slate-900">Inversiones</p>
+            <p className="text-4xl font-black leading-none tracking-tight text-blue-700">Clara</p>
+            <p className="mt-1 text-xl font-extrabold leading-tight text-slate-900">Inversiones</p>
           </div>
           <button className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X className="h-5 w-5" />
@@ -488,10 +701,10 @@ export default function Home() {
 
         {/* Footer */}
         <div className="border-t border-slate-100 p-4">
-          <button type="button" onClick={logout} className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-red-500 hover:bg-red-50 transition-all">
+          <Button type="button" onClick={logout} variant="outline" className="h-12 w-full justify-start gap-3 rounded-2xl border-red-200 bg-red-50 text-red-600 hover:bg-red-100">
             <LogOut className="h-5 w-5 flex-shrink-0" />
             <span>Cerrar sesión</span>
-          </button>
+          </Button>
         </div>
       </aside>
 
@@ -560,7 +773,19 @@ export default function Home() {
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field name="startDate"    label="Fecha de inicio"    type="date"   defaultValue={new Date().toISOString().slice(0, 10)} required />
-                      <Field name="installments" label="Número de cuotas"   type="number" min="1"  step="1"    required />
+                      <Field
+                        name="installments"
+                        label="Número de cuotas"
+                        type="number"
+                        min="1"
+                        max="240"
+                        step="1"
+                        inputMode="numeric"
+                        defaultValue="50"
+                        placeholder="Ej. 50"
+                        selectOnFocus
+                        required
+                      />
                     </div>
                     <div className="grid gap-2">
                       <Label>Frecuencia de pago</Label>
@@ -579,15 +804,21 @@ export default function Home() {
               </Dialog>
             )}
             {activeTab === "pagos" && (
-              <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-                <SelectTrigger className="h-10 w-44 rounded-xl"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pending">Pendientes</SelectItem>
-                  <SelectItem value="late">Atrasados</SelectItem>
-                  <SelectItem value="paid">Pagados</SelectItem>
-                  <SelectItem value="all">Todos</SelectItem>
-                </SelectContent>
-              </Select>
+              <>
+                <Button onClick={exportPaymentsCsv} variant="outline" className="h-10 gap-2 rounded-xl text-sm font-bold">
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">CSV pagos</span>
+                </Button>
+                <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                  <SelectTrigger className="h-10 w-44 rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendientes</SelectItem>
+                    <SelectItem value="late">Atrasados</SelectItem>
+                    <SelectItem value="paid">Pagados</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
             )}
           </div>
         </header>
@@ -600,15 +831,14 @@ export default function Home() {
             {activeTab === "inicio" && (
               <div className="space-y-8">
                 {/* KPI cards */}
-                <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                <section className="grid gap-5 md:grid-cols-3">
                   <MetricCard icon={Banknote}      label="Capital prestado"  value={money(metrics.principal)}       color="blue" />
-                  <MetricCard icon={Wallet}         label="Saldo por cobrar"  value={money(metrics.balance)}         color="violet" />
-                  <MetricCard icon={TrendingUp}     label="Ganancia esperada" value={money(metrics.expectedProfit)}  color="emerald" />
-                  <MetricCard icon={CheckCircle2}   label="Ganancia cobrada"  value={money(metrics.paidProfit)}      color="amber" />
+                  <MetricCard icon={TrendingUp}     label="Ganancia"          value={money(metrics.profit)}           color="emerald" />
+                  <MetricCard icon={Users}          label="Personas pendientes por pagos" value={String(metrics.pendingPeople)} color="amber" />
                 </section>
 
                 {/* Chart + pie row */}
-                <section className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+                <section className="grid gap-6">
                   {/* Bar chart */}
                   <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <CardHeader className="border-b border-slate-100 bg-slate-50/50 px-6 py-5">
@@ -620,38 +850,6 @@ export default function Home() {
                     </CardContent>
                   </Card>
 
-                  {/* Donut */}
-                  <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <CardHeader className="border-b border-slate-100 bg-slate-50/50 px-6 py-5">
-                      <CardTitle className="text-lg">Estado de capital</CardTitle>
-                      <p className="text-sm text-slate-500">Distribución del capital invertido.</p>
-                    </CardHeader>
-                    <CardContent className="flex flex-col items-center gap-6 p-6">
-                      <DonutChart
-                        segments={[
-                          { label: "Cobrado",   value: metrics.paidTotal,  color: "#22c55e" },
-                          { label: "Pendiente", value: metrics.balance,    color: "#3b82f6" },
-                          { label: "Ganancia",  value: metrics.expectedProfit, color: "#a855f7" },
-                        ]}
-                        total={metrics.total || 1}
-                      />
-                      <div className="grid w-full grid-cols-1 gap-2">
-                        {[
-                          { label: "Cobrado",   value: metrics.paidTotal,         color: "bg-emerald-500" },
-                          { label: "Pendiente", value: metrics.balance,           color: "bg-blue-500" },
-                          { label: "Ganancia",  value: metrics.expectedProfit,    color: "bg-violet-500" },
-                        ].map(({ label, value, color }) => (
-                          <div key={label} className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              <div className={`h-2.5 w-2.5 rounded-full ${color}`} />
-                              <span className="text-sm text-slate-600">{label}</span>
-                            </div>
-                            <span className="text-sm font-bold text-slate-800">{money(value)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
                 </section>
 
                 {/* Upcoming + debtors */}
@@ -785,21 +983,27 @@ export default function Home() {
 
             {/* ════ PRÉSTAMOS ════ */}
             {activeTab === "prestamos" && (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                {state.loans.length === 0
+              <div className="space-y-5">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                  <Input className="h-12 rounded-2xl border-slate-200 bg-white pl-12 text-base shadow-sm focus:border-blue-400" placeholder="Buscar prestamo por cliente, telefono o monto..." value={loanSearch} onChange={(e) => setLoanSearch(e.target.value)} />
+                </div>
+                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                {filteredLoans.length === 0
                   ? <div className="flex flex-col items-center justify-center py-24 text-center"><Banknote className="h-14 w-14 text-slate-300 mb-4" /><p className="text-lg font-bold text-slate-600">No hay préstamos registrados</p><p className="mt-1 text-sm text-slate-400">Agrega uno con el botón superior.</p></div>
                   : (
                     <TableShell>
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/50">
-                          <Th>Cliente</Th><Th>Capital</Th><Th>Interés</Th><Th>Total</Th><Th>Pagado</Th><Th>Saldo</Th><Th />
+                          <Th>Cliente</Th><Th>Capital</Th><Th>Interés</Th><Th>Total</Th><Th>Pagado</Th><Th>Progreso</Th><Th>Saldo</Th><Th />
                         </tr>
                       </thead>
                       <tbody>
-                        {state.loans.map((loan) => {
+                        {filteredLoans.map((loan) => {
                           const client = findClient(loan.clientId);
                           const paid   = loanPaidTotal(state.payments, loan.id);
                           const saldo  = loan.total - paid;
+                          const progress = loan.total > 0 ? Math.min(100, Math.round((paid / loan.total) * 100)) : 0;
                           return (
                             <tr key={loan.id} className="hover:bg-slate-50/80 transition-colors">
                               <Td><span className="font-semibold text-slate-800">{client?.name || "Sin cliente"}</span></Td>
@@ -807,6 +1011,14 @@ export default function Home() {
                               <Td><span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-700">{loan.interestRate}%</span></Td>
                               <Td><span className="font-bold">{money(loan.total)}</span></Td>
                               <Td><span className="text-emerald-600 font-semibold">{money(paid)}</span></Td>
+                              <Td>
+                                <div className="min-w-28">
+                                  <div className="h-2 rounded-full bg-slate-100">
+                                    <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${progress}%` }} />
+                                  </div>
+                                  <p className="mt-1 text-xs font-bold text-slate-500">{progress}% cobrado</p>
+                                </div>
+                              </Td>
                               <Td><span className={`font-bold ${saldo > 0 ? "text-red-600" : "text-emerald-600"}`}>{money(saldo)}</span></Td>
                               <Td><Button variant="outline" size="sm" className="h-7 text-xs rounded-lg text-red-500 hover:bg-red-50 hover:border-red-200" onClick={() => deleteLoan(loan.id)}>Eliminar</Button></Td>
                             </tr>
@@ -815,19 +1027,30 @@ export default function Home() {
                       </tbody>
                     </TableShell>
                   )}
-              </Card>
+                </Card>
+              </div>
             )}
 
             {/* ════ PAGOS ════ */}
             {activeTab === "pagos" && (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="space-y-5">
+                <section className="grid gap-4 md:grid-cols-3">
+                  <MiniStat label="Cuotas pendientes" value={String(metrics.pendingCount)} tone="blue" />
+                  <MiniStat label="Cuotas atrasadas" value={String(metrics.overdueCount)} tone="red" />
+                  <MiniStat label="Monto vencido" value={money(metrics.overdueBalance)} tone="amber" />
+                </section>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                  <Input className="h-12 rounded-2xl border-slate-200 bg-white pl-12 text-base shadow-sm focus:border-blue-400" placeholder="Buscar pago por cliente, telefono, cuota o fecha..." value={paymentSearch} onChange={(e) => setPaymentSearch(e.target.value)} />
+                </div>
+                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                 {visiblePayments.length === 0
                   ? <div className="flex flex-col items-center justify-center py-24 text-center"><CalendarClock className="h-14 w-14 text-slate-300 mb-4" /><p className="text-lg font-bold text-slate-600">No hay cuotas en esta vista</p><p className="mt-1 text-sm text-slate-400">Cambia el filtro para ver otras cuotas.</p></div>
                   : (
                     <TableShell>
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/50">
-                          <Th>Cliente</Th><Th>Préstamo</Th><Th>Vence</Th><Th>Cuota</Th><Th>Estado</Th><Th />
+                          <Th>Cliente</Th><Th>Préstamo</Th><Th>Vence</Th><Th>Cuota</Th><Th>Estado</Th><Th>Detalle</Th><Th />
                         </tr>
                       </thead>
                       <tbody>
@@ -842,10 +1065,19 @@ export default function Home() {
                               <Td><span className="font-bold text-slate-900">{money(payment.amount)}</span></Td>
                               <Td><PaymentBadge payment={payment} /></Td>
                               <Td>
+                                {payment.paid ? (
+                                  <span className="text-xs text-slate-500">
+                                    R: {money(payment.paidInterest || 0)} · C: {money(payment.paidCapital || 0)}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-slate-400">Pendiente</span>
+                                )}
+                              </Td>
+                              <Td>
                                 <Button variant={payment.paid ? "outline" : "default"} size="sm"
                                   className={`h-8 rounded-xl text-xs font-bold ${payment.paid ? "text-slate-500" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
-                                  onClick={() => togglePayment(payment.id)}>
-                                  {payment.paid ? "Desmarcar" : "Cobrado"}
+                                  onClick={() => payment.paid ? unmarkPayment(payment.id) : openPaymentDialog(payment.id)}>
+                                  {payment.paid ? "Desmarcar" : "Pagar"}
                                 </Button>
                               </Td>
                             </tr>
@@ -854,7 +1086,8 @@ export default function Home() {
                       </tbody>
                     </TableShell>
                   )}
-              </Card>
+                </Card>
+              </div>
             )}
 
             {/* ════ CONFIGURACIÓN ════ */}
@@ -1074,7 +1307,20 @@ const colorMap = {
   violet:  { bg: "bg-violet-50",  icon: "text-violet-600",  border: "border-violet-200" },
   emerald: { bg: "bg-emerald-50", icon: "text-emerald-600", border: "border-emerald-200" },
   amber:   { bg: "bg-amber-50",   icon: "text-amber-600",   border: "border-amber-200" },
+  red:     { bg: "bg-red-50",     icon: "text-red-600",     border: "border-red-200" },
 };
+
+function MiniStat({ label, value, tone = "blue" }: { label: string; value: string; tone?: keyof typeof colorMap }) {
+  const c = colorMap[tone];
+  return (
+    <Card className={`rounded-2xl border ${c.border} ${c.bg} shadow-sm`}>
+      <CardContent className="p-5">
+        <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{label}</p>
+        <strong className={`mt-2 block text-2xl font-extrabold ${c.icon}`}>{value}</strong>
+      </CardContent>
+    </Card>
+  );
+}
 
 function MetricCard({ icon: Icon, label, value, color = "blue" }: { icon: typeof Banknote; label: string; value: string; color?: keyof typeof colorMap }) {
   const c = colorMap[color];
@@ -1095,12 +1341,21 @@ function MetricCard({ icon: Icon, label, value, color = "blue" }: { icon: typeof
   );
 }
 
-function Field(props: React.ComponentProps<typeof Input> & { label: string; name: string }) {
-  const { label, name, ...inputProps } = props;
+function Field(props: React.ComponentProps<typeof Input> & { label: string; name: string; selectOnFocus?: boolean }) {
+  const { label, name, selectOnFocus, onFocus, ...inputProps } = props;
   return (
     <div className="grid gap-2">
       <Label htmlFor={name} className="text-sm font-bold text-slate-700">{label}</Label>
-      <Input id={name} name={name} className="h-11 rounded-xl border-slate-200" {...inputProps} />
+      <Input
+        id={name}
+        name={name}
+        className="h-11 rounded-xl border-slate-200"
+        onFocus={(event) => {
+          if (selectOnFocus) event.currentTarget.select();
+          onFocus?.(event);
+        }}
+        {...inputProps}
+      />
     </div>
   );
 }

@@ -44,9 +44,11 @@ model Payment {
   number  Int
   dueDate String
   amount  Float
-  paid    Boolean @default(false)
-  paidAt  String  @default("")
-  loan    Loan    @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  paid         Boolean @default(false)
+  paidAt       String  @default("")
+  paidInterest Float?
+  paidCapital  Float?
+  loan         Loan    @relation(fields: [loanId], references: [id], onDelete: Cascade)
 
   @@map("payments")
 }

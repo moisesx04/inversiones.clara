@@ -41,6 +41,8 @@ export async function GET() {
         amount: p.amount,
         paid: p.paid,
         paidAt: p.paidAt,
+        paidInterest: p.paidInterest ?? undefined,
+        paidCapital: p.paidCapital ?? undefined,
       })),
       sans: sans.map(s => ({ ...s, frequency: s.frequency as "weekly" | "biweekly" | "monthly", status: s.status as "active" | "completed" | "cancelled", createdAt: s.createdAt.toISOString() })),
       sanClients: sanClients.map(sc => ({ ...sc, status: sc.status as "active" | "withdrawn" })),

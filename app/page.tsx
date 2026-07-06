@@ -117,38 +117,16 @@ export default function Home() {
 
   useEffect(() => {
     setIsAuthed(sessionStorage.getItem(sessionKey) === "ok");
-    const saved = localStorage.getItem(storeKey);
-    const savedState = saved ? (JSON.parse(saved) as StoreState) : null;
-    if (savedState) {
-      setState({
-        ...savedState,
-        sans: savedState.sans || [],
-        sanClients: savedState.sanClients || [],
-        sanPayments: savedState.sanPayments || [],
-      });
-    }
     fetch("/api/loans")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: StoreState | null) => {
-        if (!data?.clients?.length) return;
-        const localPayments = new Map((savedState?.payments || []).map((payment) => [payment.id, payment]));
+        if (!data) return;
         setState({
+          ...emptyState,
           ...data,
           sans: data.sans || [],
           sanClients: data.sanClients || [],
           sanPayments: data.sanPayments || [],
-          payments: data.payments.map((payment) => {
-            const local = localPayments.get(payment.id);
-            return local
-              ? {
-                  ...payment,
-                  paid: local.paid,
-                  paidAt: local.paidAt,
-                  paidInterest: local.paidInterest,
-                  paidCapital: local.paidCapital,
-                }
-              : payment;
-          }),
         });
       })
       .catch(() => null)
@@ -157,7 +135,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(storeKey, JSON.stringify(state));
     fetch("/api/loans", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

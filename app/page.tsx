@@ -115,7 +115,14 @@ export default function Home() {
     setIsAuthed(sessionStorage.getItem(sessionKey) === "ok");
     const saved = localStorage.getItem(storeKey);
     const savedState = saved ? (JSON.parse(saved) as StoreState) : null;
-    if (savedState) setState(savedState);
+    if (savedState) {
+      setState({
+        ...savedState,
+        sans: savedState.sans || [],
+        sanClients: savedState.sanClients || [],
+        sanPayments: savedState.sanPayments || [],
+      });
+    }
     fetch("/api/loans")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: StoreState | null) => {
@@ -123,12 +130,16 @@ export default function Home() {
         const localPayments = new Map((savedState?.payments || []).map((payment) => [payment.id, payment]));
         setState({
           ...data,
+          sans: data.sans || [],
+          sanClients: data.sanClients || [],
+          sanPayments: data.sanPayments || [],
           payments: data.payments.map((payment) => {
             const local = localPayments.get(payment.id);
             return local
               ? {
                   ...payment,
-                  paidMode: local.paidMode,
+                  paid: local.paid,
+                  paidAt: local.paidAt,
                   paidInterest: local.paidInterest,
                   paidCapital: local.paidCapital,
                 }
@@ -951,78 +962,87 @@ export default function Home() {
 
                 {/* Upcoming + debtors */}
                 <section className="grid gap-6 xl:grid-cols-[1.4fr_0.6fr]">
-                  <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <CardHeader className="border-b border-slate-100 bg-slate-50/50 px-6 py-5">
-                      <CardTitle className="text-lg">Próximos pagos</CardTitle>
-                      <p className="text-sm text-slate-500">Cuotas pendientes ordenadas por fecha.</p>
+                  <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <CardHeader className="border-b border-slate-100 bg-white px-6 py-5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg font-bold text-slate-900">Cobros pendientes</CardTitle>
+                          <p className="text-sm text-slate-500 mt-0.5">La cuota más próxima de cada cliente.</p>
+                        </div>
+                        <Button variant="outline" className="h-9 rounded-xl text-xs font-semibold shadow-sm" onClick={() => handleTabChange("pagos")}>
+                          Ver todos
+                        </Button>
+                      </div>
                     </CardHeader>
                     <CardContent className="p-0">
-                      <TableShell>
-                        <thead>
-                          <tr className="border-b border-slate-100 bg-slate-50/40">
-                            <Th>Cliente</Th><Th>Fecha</Th><Th>Monto</Th><Th>Estado</Th><Th />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {upcomingPayments.length
-                            ? upcomingPayments.map((payment) => {
-                                const loan   = findLoan(payment.loanId);
-                                const client = findClient(loan?.clientId);
-                                return (
-                                  <tr key={payment.id} className="hover:bg-slate-50/80 transition-colors">
-                                    <Td><span className="font-semibold text-slate-800">{client?.name || "Sin cliente"}</span></Td>
-                                    <Td>{formatDate(payment.dueDate)}</Td>
-                                    <Td><span className="font-bold text-slate-900">{money(payment.amount)}</span></Td>
-                                    <Td><PaymentBadge payment={payment} /></Td>
-                                    <Td>
-                                      {client && (
-                                        <Button asChild variant="outline" size="sm" className="h-7 rounded-lg text-xs">
-                                          <a href={reminderLink(client)} target="_blank" rel="noreferrer">
-                                            <MessageCircle className="h-3.5 w-3.5" /> Avisar
-                                          </a>
-                                        </Button>
-                                      )}
-                                    </Td>
-                                  </tr>
-                                );
-                              })
-                            : emptyState("No hay cuotas pendientes.", 5)}
-                        </tbody>
-                      </TableShell>
+                      <div className="divide-y divide-slate-100">
+                        {clientPaymentRows.length > 0 ? clientPaymentRows.slice(0, 6).map(({ client, payment }) => {
+                          const isLatePayment = !payment.paid && isLate(payment.dueDate);
+                          return (
+                            <div key={payment.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+                              <div className="flex items-center gap-4">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-600">
+                                  {client.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-slate-900">{client.name}</p>
+                                  <p className="text-xs font-medium text-slate-500">{formatDate(payment.dueDate)}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-6">
+                                <div className="text-right hidden sm:block">
+                                  <p className="text-sm font-extrabold text-slate-900">{money(payment.amount)}</p>
+                                  <p className={`text-[11px] font-bold mt-0.5 ${isLatePayment ? "text-red-500" : "text-amber-500"}`}>
+                                    {isLatePayment ? "Atrasado" : "Pendiente"}
+                                  </p>
+                                </div>
+                                <Button asChild variant="outline" size="sm" className="h-8 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">
+                                  <a href={reminderLink(client)} target="_blank" rel="noreferrer">
+                                    <MessageCircle className="h-3.5 w-3.5 mr-1.5" /> Avisar
+                                  </a>
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        }) : (
+                          <div className="py-12 text-center">
+                            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400 mb-3" />
+                            <p className="text-sm font-bold text-slate-600">No hay cobros pendientes</p>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <CardHeader className="border-b border-slate-100 bg-slate-50/50 px-6 py-5">
-                      <CardTitle className="text-lg">Clientes con deuda</CardTitle>
-                      <p className="text-sm text-slate-500">Saldo pendiente por cliente.</p>
+                  <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <CardHeader className="border-b border-slate-100 bg-white px-6 py-5">
+                      <CardTitle className="text-lg font-bold text-slate-900">Mayores Deudores</CardTitle>
+                      <p className="text-sm text-slate-500 mt-0.5">Clientes con saldo pendiente.</p>
                     </CardHeader>
-                    <CardContent className="grid gap-3 p-5">
-                      {state.clients.filter((c) => clientDebt(state, c.id) > 0).map((client) => {
-                        const next = clientNextPayment(state, client.id);
-                        return (
-                          <div key={client.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4 hover:bg-white transition-colors">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <h3 className="font-bold text-slate-900 truncate">{client.name}</h3>
-                                <p className="text-sm text-slate-500 mt-0.5">Saldo: <span className="font-semibold text-red-600">{money(clientDebt(state, client.id))}</span></p>
-                                <p className="text-xs text-slate-400 mt-0.5">{next ? `${formatDate(next.dueDate)} · ${money(next.amount)}` : "Sin cuotas"}</p>
+                    <CardContent className="p-0">
+                      <div className="divide-y divide-slate-100">
+                        {state.clients
+                          .map((client) => ({ client, debt: clientDebt(state, client.id) }))
+                          .filter((x) => x.debt > 0)
+                          .sort((a, b) => b.debt - a.debt)
+                          .slice(0, 5)
+                          .map(({ client, debt }) => (
+                            <div key={client.id} className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors">
+                              <div className="min-w-0 pr-4">
+                                <p className="text-sm font-bold text-slate-900 truncate">{client.name}</p>
+                                <p className="text-xs text-slate-500 mt-0.5 truncate">{client.phone}</p>
                               </div>
-                              <Button asChild size="icon" variant="outline" className="h-8 w-8 flex-shrink-0 rounded-lg">
-                                <a href={reminderLink(client)} target="_blank" rel="noreferrer" aria-label="Avisar">
-                                  <MessageCircle className="h-3.5 w-3.5" />
-                                </a>
-                              </Button>
+                              <span className="shrink-0 rounded-lg bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 border border-red-100">
+                                {money(debt)}
+                              </span>
                             </div>
+                          ))}
+                        {!state.clients.some((c) => clientDebt(state, c.id) > 0) && (
+                          <div className="py-12 text-center">
+                            <p className="text-sm font-medium text-slate-400">Todos están al día</p>
                           </div>
-                        );
-                      })}
-                      {!state.clients.some((c) => clientDebt(state, c.id) > 0) && (
-                        <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 p-8 text-center">
-                          <CheckCircle2 className="h-7 w-7 text-emerald-400 mb-2" />
-                          <p className="text-sm font-bold text-slate-600">Sin deudas pendientes</p>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </section>

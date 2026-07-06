@@ -274,16 +274,11 @@ export default function Home() {
 
   function logout() { sessionStorage.removeItem(sessionKey); setIsAuthed(false); }
 
-  function changePassword(formData: FormData) {
+  async function changePassword(formData: FormData) {
     const current = String(formData.get("currentPassword") || "");
-    const next = String(formData.get("newPassword") || "");
+    const next    = String(formData.get("newPassword") || "");
     const confirm = String(formData.get("confirmPassword") || "");
-    const savedPassword = localStorage.getItem(passwordKey) || "admin123";
 
-    if (current !== savedPassword) {
-      toast("Clave actual incorrecta", "Escribe la clave actual para poder cambiarla.", "error");
-      return;
-    }
     if (next.length < 6) {
       toast("Clave muy corta", "Usa al menos 6 caracteres.", "error");
       return;
@@ -292,8 +287,23 @@ export default function Home() {
       toast("Las claves no coinciden", "Confirma la nueva clave correctamente.", "error");
       return;
     }
-    localStorage.setItem(passwordKey, next);
-    toast("Clave actualizada", "Desde ahora inicia sesion con la nueva clave.", "success");
+
+    const response = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword: current, newPassword: next }),
+    });
+
+    const data = await response.json() as { ok: boolean; error?: string };
+
+    if (!response.ok || !data.ok) {
+      toast("Error", data.error || "No se pudo cambiar la clave.", "error");
+      return;
+    }
+
+    // También borra la copia local por si existía de antes
+    localStorage.removeItem("clara-admin-password-v1");
+    toast("Clave actualizada", "Desde ahora inicia sesión con la nueva clave.", "success");
   }
 
   function addClient(formData: FormData) {
@@ -646,12 +656,12 @@ export default function Home() {
       {/* ── Sidebar ── */}
       <aside className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-white border-r border-slate-200 shadow-xl transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:shadow-none ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* Brand */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-6" style={{ background: "linear-gradient(135deg, #1d4ed8 0%, #2563eb 60%, #3b82f6 100%)" }}>
           <div>
-            <p className="text-4xl font-black leading-none tracking-tight text-blue-700">Clara</p>
-            <p className="mt-1 text-xl font-extrabold leading-tight text-slate-900">Inversiones</p>
+            <p className="text-5xl font-black leading-none tracking-tight text-white drop-shadow-sm">Clara</p>
+            <p className="mt-1 text-base font-bold leading-tight text-blue-100 tracking-wide">Inversiones</p>
           </div>
-          <button className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors lg:hidden" onClick={() => setSidebarOpen(false)}>
+          <button className="rounded-xl p-2 text-blue-200 hover:bg-white/20 hover:text-white transition-colors lg:hidden" onClick={() => setSidebarOpen(false)}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -684,24 +694,15 @@ export default function Home() {
               </button>
             );
           })}
-
-          <div className="pt-4">
-            <p className="px-3 py-2 text-[11px] font-extrabold uppercase tracking-widest text-slate-400">Datos</p>
-            <button type="button" onClick={exportData} className="flex w-full items-center gap-4 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all">
-              <Download className="h-5 w-5 flex-shrink-0 text-slate-400" />
-              <span>Exportar datos</span>
-            </button>
-            <Label className="flex cursor-pointer items-center gap-4 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-all">
-              <Upload className="h-5 w-5 flex-shrink-0 text-slate-400" />
-              <span>Importar datos</span>
-              <input className="hidden" type="file" accept="application/json" onChange={(e) => importData(e.target.files?.[0] ?? null)} />
-            </Label>
-          </div>
         </nav>
 
         {/* Footer */}
         <div className="border-t border-slate-100 p-4">
-          <Button type="button" onClick={logout} variant="outline" className="h-12 w-full justify-start gap-3 rounded-2xl border-red-200 bg-red-50 text-red-600 hover:bg-red-100">
+          <Button
+            type="button"
+            onClick={logout}
+            className="h-12 w-full justify-center gap-3 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-bold shadow-lg shadow-red-200 transition-all hover:shadow-red-300 hover:-translate-y-0.5"
+          >
             <LogOut className="h-5 w-5 flex-shrink-0" />
             <span>Cerrar sesión</span>
           </Button>
@@ -1079,143 +1080,6 @@ export default function Home() {
                                   onClick={() => payment.paid ? unmarkPayment(payment.id) : openPaymentDialog(payment.id)}>
                                   {payment.paid ? "Desmarcar" : "Pagar"}
                                 </Button>
-                              </Td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </TableShell>
-                  )}
-                </Card>
-              </div>
-            )}
-
-            {/* ════ CONFIGURACIÓN ════ */}
-            {activeTab === "configuracion" && (
-              <div className="grid gap-6 max-w-4xl">
-                {/* Reminder settings */}
-                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <CardHeader className="border-b border-slate-100 bg-slate-50/50 px-7 py-6">
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
-                        <BellRing className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-xl">Recordatorios de pago</CardTitle>
-                        <p className="text-sm text-slate-500 mt-0.5">Configura con cuántos días de anticipación avisar a los clientes.</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-7 grid gap-7 lg:grid-cols-[1fr_1.6fr]">
-                    {/* Controls */}
-                    <div className="space-y-5">
-                      <div className="grid gap-2">
-                        <Label className="text-sm font-bold text-slate-700">Anticipación del aviso</Label>
-                        <Select value={reminderDays} onValueChange={setReminderDays}>
-                          <SelectTrigger className="h-12 rounded-xl text-base"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">1 día antes</SelectItem>
-                            <SelectItem value="2">2 días antes</SelectItem>
-                            <SelectItem value="3">3 días antes</SelectItem>
-                            <SelectItem value="7">7 días antes</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button className="h-12 w-full rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-base font-bold shadow-md shadow-amber-200" onClick={notifyUpcomingPayments}>
-                        <BellRing className="h-5 w-5" />
-                        Activar alertas
-                        {reminderPayments.length > 0 && (
-                          <span className="ml-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-extrabold">
-                            {reminderPayments.length}
-                          </span>
-                        )}
-                      </Button>
-                      <p className="text-xs text-slate-400 leading-relaxed">
-                        También puedes enviar avisos individuales por WhatsApp o SMS desde la tarjeta de cada cliente.
-                      </p>
-                    </div>
-
-                    {/* Reminder list */}
-                    <div className="space-y-3">
-                      <p className="text-sm font-bold text-slate-600">Clientes con pagos próximos</p>
-                      {reminderPayments.length ? (
-                        reminderPayments.slice(0, 6).map((payment) => {
-                          const loan   = findLoan(payment.loanId);
-                          const client = findClient(loan?.clientId);
-                          if (!client) return null;
-                          const days = daysUntil(payment.dueDate);
-                          return (
-                            <div key={payment.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:bg-white transition-colors">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="font-bold text-slate-900">{client.name}</span>
-                                  <Badge variant={days === 0 ? "destructive" : "secondary"} className={days === 0 ? "" : "bg-amber-100 text-amber-700 border-amber-200"}>
-                                    {days === 0 ? "Hoy" : `${days}d`}
-                                  </Badge>
-                                </div>
-                                <p className="text-sm text-slate-500 mt-0.5">{money(payment.amount)} · {formatDate(payment.dueDate)}</p>
-                              </div>
-                              <div className="flex gap-2 flex-shrink-0">
-                                <Button asChild size="sm" className="h-9 rounded-xl bg-blue-600 hover:bg-blue-700">
-                                  <a href={reminderLink(client)} target="_blank" rel="noreferrer"><Send className="h-3.5 w-3.5" /></a>
-                                </Button>
-                                <Button size="sm" variant="outline" className="h-9 rounded-xl text-xs"
-                                  onClick={() => navigator.clipboard.writeText(reminderText(client)).then(() => toast("Copiado", "Pégalo en WhatsApp o SMS.", "success"))}>
-                                  Copiar
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-10 text-center">
-                          <CheckCircle2 className="h-8 w-8 text-emerald-400 mb-3" />
-                          <p className="font-bold text-slate-700">Todo al día</p>
-                          <p className="text-sm text-slate-400 mt-1">No hay pagos próximos en el rango seleccionado.</p>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Data management */}
-                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                  <CardHeader className="border-b border-slate-100 bg-slate-50/50 px-7 py-6">
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
-                        <Download className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-xl">Gestión de datos</CardTitle>
-                        <p className="text-sm text-slate-500 mt-0.5">Exporta o importa un respaldo completo del sistema.</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-7 flex flex-wrap gap-4">
-                    <Button onClick={exportData} variant="outline" className="h-12 gap-3 rounded-xl px-6 text-base font-semibold">
-                      <Download className="h-5 w-5" /> Exportar JSON
-                    </Button>
-                    <Label className="inline-flex h-12 cursor-pointer items-center gap-3 rounded-xl border border-input bg-white px-6 text-base font-semibold hover:bg-secondary transition-colors">
-                      <Upload className="h-5 w-5" /> Importar JSON
-                      <input className="hidden" type="file" accept="application/json" onChange={(e) => importData(e.target.files?.[0] ?? null)} />
-                    </Label>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-          </div>
-        </main>
-      </div>
-
-      <ToastViewport />
-    </div>
-  );
-}
-
-// ═══════════════ CHART COMPONENTS ════════════════════════════════
-
-interface BarChartData { label: string; collected: number; expected: number }
 
 function BarChart({ data }: { data: BarChartData[] }) {
   const maxVal = Math.max(...data.flatMap((d) => [d.collected, d.expected]), 1);

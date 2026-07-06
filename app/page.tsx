@@ -470,6 +470,18 @@ export default function Home() {
     toast("SAN creado", `Grupo "${name}" creado exitosamente.`, "success");
   }
 
+  function deleteSan(id: string) {
+    if (!confirm("¿Seguro que deseas eliminar este SAN? Se borrarán todos sus participantes y pagos.")) return;
+    setState(c => ({
+      ...c,
+      sans: c.sans.filter(s => s.id !== id),
+      sanClients: c.sanClients.filter(sc => sc.sanId !== id),
+      sanPayments: c.sanPayments.filter(sp => sp.sanId !== id)
+    }));
+    setActiveSanId("");
+    toast("SAN eliminado", "El grupo ha sido borrado.", "success");
+  }
+
   function addSanClient(formData: FormData) {
     const sanId = activeSanId;
     const name = String(formData.get("name") || "");
@@ -1489,11 +1501,16 @@ export default function Home() {
                   
                   return (
                     <div className="space-y-6">
-                      <div className="flex items-center gap-4">
-                        <Button variant="outline" size="sm" onClick={() => setActiveSanId("")} className="rounded-xl border-slate-200">
-                          Volver a SANs
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <Button variant="outline" size="sm" onClick={() => setActiveSanId("")} className="rounded-xl border-slate-200">
+                            Volver a SANs
+                          </Button>
+                          <h3 className="text-lg font-bold text-slate-800">{san.name} - Detalles</h3>
+                        </div>
+                        <Button variant="default" size="sm" onClick={() => deleteSan(san.id)} className="rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold h-8 text-xs">
+                          Eliminar SAN
                         </Button>
-                        <h3 className="text-lg font-bold text-slate-800">{san.name} - Detalles</h3>
                       </div>
 
                       <div className="grid lg:grid-cols-2 gap-6">
@@ -1551,13 +1568,18 @@ export default function Home() {
                           <CardHeader className="flex flex-row items-center justify-between pb-2">
                             <CardTitle className="text-base font-bold text-slate-800">Pagos de Cuota</CardTitle>
                             <div className="flex items-center gap-2">
-                              <Label className="text-xs text-slate-500">Ronda / Cuota:</Label>
+                              <Label className="text-xs text-slate-500">Número:</Label>
                               <Select value={String(selectedRound)} onValueChange={(val) => setSelectedRound(Number(val))}>
-                                <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-slate-200"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="h-8 w-auto min-w-32 text-xs font-bold rounded-lg border-slate-200"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                  {Array.from({ length: san.participantCount }, (_, i) => i + 1).map(round => (
-                                    <SelectItem key={round} value={String(round)}>Ronda {round}</SelectItem>
-                                  ))}
+                                  {Array.from({ length: san.participantCount }, (_, i) => i + 1).map(round => {
+                                    const receiver = clients.find(c => c.turnNumber === round);
+                                    return (
+                                      <SelectItem key={round} value={String(round)}>
+                                        Número {round} {receiver ? `- ${receiver.name}` : ""}
+                                      </SelectItem>
+                                    );
+                                  })}
                                 </SelectContent>
                               </Select>
                             </div>

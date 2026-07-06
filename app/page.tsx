@@ -262,6 +262,36 @@ export default function Home() {
       .filter(Boolean) as { client: Client; payment: Payment; loan: Loan | undefined }[];
   }, [state]);
 
+  const overdueSanRows = useMemo(() => {
+    const list: { clientName: string; phone: string; amount: number; sanName: string; round: number }[] = [];
+    state.sans.forEach(san => {
+      if (san.status !== "active") return;
+      const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`);
+      const target = new Date(`${san.startDate}T00:00:00`);
+      const daysDiff = Math.floor((today.getTime() - target.getTime()) / 86_400_000); // positive means past start date
+      
+      let currentRound = 1;
+      if (daysDiff > 0) {
+        if (san.frequency === "weekly") currentRound = Math.floor(daysDiff / 7) + 1;
+        if (san.frequency === "biweekly") currentRound = Math.floor(daysDiff / 15) + 1;
+        if (san.frequency === "monthly") currentRound = Math.floor(daysDiff / 30) + 1;
+      }
+      currentRound = Math.max(1, Math.min(san.participantCount, currentRound));
+
+      const clients = state.sanClients.filter(c => c.sanId === san.id && c.status === "active");
+      clients.forEach(client => {
+        // They should have paid all rounds up to currentRound
+        for (let r = 1; r <= currentRound; r++) {
+          const paid = state.sanPayments.some(p => p.sanClientId === client.id && p.roundNumber === r);
+          if (!paid) {
+            list.push({ clientName: client.name, phone: client.phone, amount: san.quotaAmount, sanName: san.name, round: r });
+          }
+        }
+      });
+    });
+    return list;
+  }, [state]);
+
   const reminderPayments = useMemo(() => dueSoonPayments(state, Number(reminderDays || 0)), [reminderDays, state]);
 
   // Chart data: last 6 months payments
@@ -851,9 +881,9 @@ export default function Home() {
               className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
             >
               <BellRing className="h-5 w-5" />
-              {overdueRows.length > 0 && (
+              {(overdueRows.length + overdueSanRows.length) > 0 && (
                 <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
-                  {overdueRows.length}
+                  {overdueRows.length + overdueSanRows.length}
                 </span>
               )}
             </button>
@@ -872,33 +902,51 @@ export default function Home() {
                     <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 flex items-center justify-between">
                       <div>
                         <p className="font-extrabold text-slate-900 text-sm">Clientes con atraso</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{overdueRows.length} pago{overdueRows.length !== 1 ? "s" : ""} vencido{overdueRows.length !== 1 ? "s" : ""}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{overdueRows.length + overdueSanRows.length} pago{(overdueRows.length + overdueSanRows.length) !== 1 ? "s" : ""} vencido{(overdueRows.length + overdueSanRows.length) !== 1 ? "s" : ""}</p>
                       </div>
                       <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors">
                         <X className="h-4 w-4" />
                       </button>
                     </div>
                     <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
-                      {overdueRows.length === 0 ? (
+                      {overdueRows.length === 0 && overdueSanRows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-10 text-center">
                           <CheckCircle2 className="h-8 w-8 text-emerald-400 mb-2" />
                           <p className="text-sm font-bold text-slate-600">Todo al día</p>
                           <p className="text-xs text-slate-400 mt-0.5">No hay pagos vencidos.</p>
                         </div>
-                      ) : overdueRows.map(({ client, payment, loan }) => (
-                        <div key={payment.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-red-50 transition-colors">
-                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 text-sm font-extrabold">
-                            {client.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-bold text-slate-900 text-sm truncate">{client.name}</p>
-                            <p className="text-xs text-red-600 font-semibold">{money(payment.amount)} · venció {formatDate(payment.dueDate)}</p>
-                          </div>
-                          <Button asChild size="sm" className="h-8 rounded-xl bg-blue-600 hover:bg-blue-700 flex-shrink-0">
-                            <a href={reminderLink(client)} target="_blank" rel="noreferrer"><MessageCircle className="h-3.5 w-3.5" /></a>
-                          </Button>
-                        </div>
-                      ))}
+                      ) : (
+                        <>
+                          {overdueRows.map(({ client, payment, loan }) => (
+                            <div key={payment.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-red-50 transition-colors">
+                              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 text-sm font-extrabold">
+                                {client.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-slate-900 text-sm truncate">{client.name}</p>
+                                <p className="text-xs text-red-600 font-semibold">{money(payment.amount)} · venció {formatDate(payment.dueDate)}</p>
+                              </div>
+                              <Button asChild size="sm" className="h-8 rounded-xl bg-blue-600 hover:bg-blue-700 flex-shrink-0">
+                                <a href={reminderLink(client)} target="_blank" rel="noreferrer"><MessageCircle className="h-3.5 w-3.5" /></a>
+                              </Button>
+                            </div>
+                          ))}
+                          {overdueSanRows.map((row, idx) => (
+                            <div key={`san-${idx}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-purple-50 transition-colors">
+                              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-600 text-sm font-extrabold">
+                                S
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-slate-900 text-sm truncate">{row.clientName}</p>
+                                <p className="text-xs text-purple-600 font-semibold">{row.sanName} · Ronda {row.round} · {money(row.amount)}</p>
+                              </div>
+                              <Button asChild size="sm" className="h-8 rounded-xl bg-purple-600 hover:bg-purple-700 flex-shrink-0">
+                                <a href={`https://wa.me/${row.phone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola ${row.clientName}, recuerda tu pago pendiente del SAN "${row.sanName}" (Ronda ${row.round}) por un monto de ${money(row.amount)}.`)}`} target="_blank" rel="noreferrer"><MessageCircle className="h-3.5 w-3.5" /></a>
+                              </Button>
+                            </div>
+                          ))}
+                        </>
+                      )}
                     </div>
                     {overdueRows.length > 0 && (
                       <div className="border-t border-slate-100 px-5 py-3">
@@ -1399,7 +1447,19 @@ export default function Home() {
                       </div>
                     ) : (
                       state.sans.map((san) => (
-                        <Card key={san.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all cursor-pointer" onClick={() => setActiveSanId(san.id)}>
+                        <Card key={san.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all cursor-pointer" onClick={() => {
+                          setActiveSanId(san.id);
+                          const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00`);
+                          const target = new Date(`${san.startDate}T00:00:00`);
+                          const daysDiff = Math.floor((today.getTime() - target.getTime()) / 86_400_000);
+                          let round = 1;
+                          if (daysDiff > 0) {
+                            if (san.frequency === "weekly") round = Math.floor(daysDiff / 7) + 1;
+                            if (san.frequency === "biweekly") round = Math.floor(daysDiff / 15) + 1;
+                            if (san.frequency === "monthly") round = Math.floor(daysDiff / 30) + 1;
+                          }
+                          setSelectedRound(Math.max(1, Math.min(san.participantCount, round)));
+                        }}>
                           <CardHeader className="pb-3 border-b border-slate-100">
                             <CardTitle className="text-lg font-bold text-slate-900 flex items-center justify-between">
                               {san.name}
@@ -1503,10 +1563,26 @@ export default function Home() {
                             </div>
                           </CardHeader>
                           <CardContent>
-                            <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-xl mb-4 font-medium flex justify-between items-center">
-                              <span>Esta ronda la cobra el <b>Turno {selectedRound}</b></span>
-                              <span>Total a cobrar: <b>{money(san.quotaAmount * clients.length)}</b></span>
-                            </div>
+                            {(() => {
+                              const recaudado = sum(state.sanPayments.filter(p => p.sanId === san.id && p.roundNumber === selectedRound).map(p => p.amount));
+                              const totalEsperado = san.quotaAmount * clients.length;
+                              return (
+                                <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-xl mb-4 font-medium flex justify-between items-center">
+                                  <div className="flex flex-col">
+                                    <span>Esta ronda la cobra el <b>Turno {selectedRound}</b></span>
+                                    <span className={`text-[10px] mt-0.5 ${recaudado >= totalEsperado ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                      Recaudado: {money(recaudado)} / {money(totalEsperado)}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col w-32 text-right">
+                                    <span>Total a cobrar: <b>{money(totalEsperado)}</b></span>
+                                    <div className="mt-1.5 h-1.5 w-full bg-blue-200 rounded-full overflow-hidden">
+                                      <div className={`h-full ${recaudado >= totalEsperado ? 'bg-emerald-500' : 'bg-blue-600'} transition-all`} style={{ width: `${Math.min(100, (recaudado / totalEsperado) * 100 || 0)}%` }}></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                             {clients.length === 0 ? (
                               <p className="text-sm text-slate-500 text-center py-4">Agrega participantes primero.</p>
                             ) : (

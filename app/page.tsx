@@ -745,11 +745,11 @@ export default function Home() {
                 <form action={handleLogin} className="grid gap-5">
                   <div className="grid gap-2">
                     <Label htmlFor="user" className="text-sm font-bold text-slate-700">Usuario</Label>
-                    <Input id="user" name="user" defaultValue="admin" required className="h-12 rounded-xl text-base border-slate-200" />
+                    <Input id="user" name="user" required className="h-12 rounded-xl text-base border-slate-200" />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="password" className="text-sm font-bold text-slate-700">Clave</Label>
-                    <Input id="password" name="password" type="password" defaultValue="admin123" required className="h-12 rounded-xl text-base border-slate-200" />
+                    <Input id="password" name="password" type="password" required className="h-12 rounded-xl text-base border-slate-200" />
                   </div>
                   {loginError && (
                     <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3">

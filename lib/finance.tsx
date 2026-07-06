@@ -18,12 +18,12 @@ export function sum(values: number[]) {
 }
 
 export function loanPaidTotal(payments: Payment[], loanId: string) {
-  return sum(payments.filter((payment) => payment.loanId === loanId && payment.paid).map((payment) => payment.amount));
+  return sum(payments.filter((payment) => payment.loanId === loanId && payment.paid).map((payment) => payment.paidCapital || 0));
 }
 
 export function clientPaidTotal(state: StoreState, clientId: string) {
   const loanIds = state.loans.filter((loan) => loan.clientId === clientId).map((loan) => loan.id);
-  return sum(state.payments.filter((payment) => loanIds.includes(payment.loanId) && payment.paid).map((payment) => payment.amount));
+  return sum(state.payments.filter((payment) => loanIds.includes(payment.loanId) && payment.paid).map((payment) => (payment.paidCapital || 0) + (payment.paidInterest || 0)));
 }
 
 export function clientDebt(state: StoreState, clientId: string) {

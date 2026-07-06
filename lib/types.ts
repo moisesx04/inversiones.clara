@@ -27,7 +27,7 @@ export type Payment = {
   amount: number;
   paid: boolean;
   paidAt: string;
-  paidMode?: "interest" | "capital" | "both";
+  paidMode?: "interest" | "capital" | "both" | "full";
   paidInterest?: number;
   paidCapital?: number;
 };

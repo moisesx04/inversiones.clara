@@ -98,9 +98,11 @@ export default function Home() {
   const [selectedPaymentId, setSelectedPaymentId] = useState("");
   const [customInterest, setCustomInterest] = useState<string>("");
   const [customCapital, setCustomCapital] = useState<string>("");
+  const [paymentMode, setPaymentMode] = useState<"interest" | "capital" | "both" | "full">("interest");
   const [reminderDays, setReminderDays] = useState("2");
   const [clientOpen, setClientOpen]     = useState(false);
   const [loanOpen, setLoanOpen]         = useState(false);
+  const [sanOpen, setSanOpen]           = useState(false);
   const [ready, setReady]               = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [notifOpen, setNotifOpen]       = useState(false);
@@ -175,7 +177,7 @@ export default function Home() {
   const metrics = useMemo(() => {
     const principal   = sum(state.loans.map((l) => l.principal));
     const total       = sum(state.loans.map((l) => l.total));
-    const paidTotal   = sum(state.payments.filter((p) => p.paid).map((p) => p.amount));
+    const paidTotal   = sum(state.payments.filter((p) => p.paid).map((p) => (p.paidCapital || 0) + (p.paidInterest || 0)));
     const principalPaid = sum(state.loans.map((l) => Math.min(l.principal, loanPaidTotal(state.payments, l.id))));
     const overduePayments = state.payments.filter((p) => !p.paid && isLate(p.dueDate));
     const pendingPayments = state.payments.filter((p) => !p.paid);
@@ -400,17 +402,40 @@ export default function Home() {
       return;
     }
 
-    const loan: Loan = { id: loanId, clientId, principal, interestRate, total, installments, frequency, startDate, createdAt: new Date().toISOString() };
+    const loan: Loan = { id: loanId, clientId, principal, interestRate, total: principal, installments, frequency, startDate, createdAt: new Date().toISOString() };
     const payments: Payment[] = Array.from({ length: installments }, (_, i) => ({
       id: crypto.randomUUID(), loanId, number: i + 1,
       dueDate: addPeriod(startDate, frequency, i + 1),
-      amount: i === installments - 1 ? roundMoney(total - amount * (installments - 1)) : amount,
+      amount: roundMoney(principal * (interestRate / 100)),
       paid: false, paidAt: "",
     }));
 
     setState((c) => ({ ...c, loans: [...c.loans, loan], payments: [...c.payments, ...payments] }));
     setLoanOpen(false);
     toast("Préstamo creado", "Las cuotas quedaron generadas automáticamente.", "success");
+  }
+
+  function addSan(formData: FormData) {
+    const name        = String(formData.get("name") || "");
+    const quotaAmount = Number(formData.get("quotaAmount") || 0);
+    const frequency   = String(formData.get("frequency") || "weekly") as SanGroup["frequency"];
+    const startDate   = String(formData.get("startDate") || new Date().toISOString().slice(0, 10));
+    const participantCount = Number(formData.get("participantCount") || 10);
+
+    if (quotaAmount <= 0) {
+      toast("Error", "La cuota debe ser mayor a 0", "error");
+      return;
+    }
+
+    const newSan: SanGroup = {
+      id: crypto.randomUUID(),
+      name, quotaAmount, frequency, startDate, participantCount,
+      status: "active", createdAt: new Date().toISOString()
+    };
+
+    setState((c) => ({ ...c, sans: [...c.sans, newSan] }));
+    setSanOpen(false);
+    toast("SAN creado", `Grupo "${name}" creado exitosamente.`, "success");
   }
 
   function loanBreakdown(loanId: string) {
@@ -429,6 +454,7 @@ export default function Home() {
   function openPaymentDialog(id: string) {
     const payment = state.payments.find((p) => p.id === id);
     if (payment) {
+      setPaymentMode("interest");
       setCustomInterest(String(payment.amount));
       setCustomCapital("0");
     }
@@ -441,15 +467,27 @@ export default function Home() {
     const loan = state.loans.find((l) => l.id === payment.loanId);
     if (!loan) return;
 
-    const paidInterest = Number(customInterest) || 0;
-    const paidCapital = Number(customCapital) || 0;
-
     const breakdown = loanBreakdown(loan.id);
+    let paidInterest = 0;
+    let paidCapital = 0;
+
+    if (paymentMode === "interest") {
+      paidInterest = payment.amount;
+    } else if (paymentMode === "full") {
+      paidInterest = payment.amount;
+      paidCapital = breakdown.remainingCapital;
+    } else if (paymentMode === "capital") {
+      paidCapital = Number(customCapital) || 0;
+    } else {
+      paidInterest = Number(customInterest) || 0;
+      paidCapital = Number(customCapital) || 0;
+    }
+
     const remainingCapitalAfterPayment = Math.max(0, breakdown.remainingCapital - paidCapital);
 
     let newPayments = state.payments.map((p) =>
       p.id === selectedPaymentId
-        ? { ...p, paid: true, paidAt: new Date().toISOString(), paidMode: "both" as const, paidInterest, paidCapital }
+        ? { ...p, paid: true, paidAt: new Date().toISOString(), paidMode: paymentMode, paidInterest, paidCapital }
         : p
     );
 
@@ -890,7 +928,7 @@ export default function Home() {
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
                       <Field name="principal"   label="Capital prestado"   type="number" min="1"  step="0.01" required />
-                      <Field name="interestRate" label="Interés total (%)"  type="number" min="0"  step="0.01" required />
+                      <Field name="interestRate" label="Interés mensual (%)"  type="number" min="0"  step="0.01" required />
                     </div>
                     <div className="grid gap-4">
                       <Field name="startDate" label="Fecha de inicio" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required />
@@ -1114,21 +1152,22 @@ export default function Home() {
                     <TableShell>
                       <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/50">
-                          <Th>Cliente</Th><Th>Capital</Th><Th>Interés</Th><Th>Total</Th><Th>Pagado</Th><Th>Progreso</Th><Th>Saldo</Th><Th />
+                          <Th>Cliente</Th><Th>Capital</Th><Th>Interés</Th><Th>Abonos Réditos</Th><Th>Capital Pagado</Th><Th>Progreso</Th><Th>Saldo Capital</Th><Th />
                         </tr>
                       </thead>
                       <tbody>
                         {filteredLoans.map((loan) => {
                           const client = findClient(loan.clientId);
-                          const paid   = loanPaidTotal(state.payments, loan.id);
-                          const saldo  = loan.total - paid;
-                          const progress = loan.total > 0 ? Math.min(100, Math.round((paid / loan.total) * 100)) : 0;
+                          const breakdown = loanBreakdown(loan.id);
+                          const paid = breakdown.paidCapital;
+                          const saldo = breakdown.remainingCapital;
+                          const progress = loan.principal > 0 ? Math.min(100, Math.round((paid / loan.principal) * 100)) : 0;
                           return (
                             <tr key={loan.id} className="hover:bg-slate-50/80 transition-colors">
                               <Td><span className="font-semibold text-slate-800">{client?.name || "Sin cliente"}</span></Td>
                               <Td>{money(loan.principal)}</Td>
                               <Td><span className="inline-flex items-center rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-bold text-violet-700">{loan.interestRate}%</span></Td>
-                              <Td><span className="font-bold">{money(loan.total)}</span></Td>
+                              <Td><span className="font-bold text-slate-600">{money(breakdown.paidInterest)}</span></Td>
                               <Td><span className="text-emerald-600 font-semibold">{money(paid)}</span></Td>
                               <Td>
                                 <div className="min-w-28">
@@ -1280,10 +1319,41 @@ export default function Home() {
                     <h2 className="text-xl font-extrabold text-slate-900">Ahorros Colectivos (SAN)</h2>
                     <p className="text-sm text-slate-500 mt-1">Gestiona grupos de ahorro y cobros por turnos.</p>
                   </div>
-                  <Button className="h-12 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-200 gap-2">
-                    <Plus className="h-5 w-5" />
-                    Nuevo SAN
-                  </Button>
+                  <Dialog open={sanOpen} onOpenChange={setSanOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="h-12 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-200 gap-2">
+                        <Plus className="h-5 w-5" />
+                        Nuevo SAN
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                      <DialogHeader>
+                        <DialogTitle>Nuevo grupo SAN</DialogTitle>
+                      </DialogHeader>
+                      <form action={addSan} className="space-y-6 pt-4">
+                        <Field name="name" label="Nombre del grupo" placeholder="Ej. SAN Enero 2026" required />
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field name="quotaAmount" label="Monto por cuota" type="number" min="1" step="0.01" required />
+                          <Field name="participantCount" label="Participantes" type="number" min="2" max="100" defaultValue="10" required />
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field name="startDate" label="Fecha de inicio" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required />
+                          <div className="grid gap-2">
+                            <Label className="text-sm font-bold text-slate-700">Frecuencia</Label>
+                            <Select name="frequency" defaultValue="weekly">
+                              <SelectTrigger className="h-11 rounded-xl border-slate-200"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="weekly">Semanal</SelectItem>
+                                <SelectItem value="biweekly">Quincenal</SelectItem>
+                                <SelectItem value="monthly">Mensual</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <Button type="submit" className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold">Crear grupo SAN</Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
                 </div>
 
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -1533,33 +1603,63 @@ export default function Home() {
                   </div>
                   
                   <div className="space-y-4">
-                    <p className="text-sm font-bold text-slate-700">Monto entregado por el cliente:</p>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label className="text-xs font-bold text-violet-700 uppercase">Pago a Réditos</Label>
-                        <Input 
-                          type="number" min="0" step="0.01" 
-                          value={customInterest} onChange={(e) => setCustomInterest(e.target.value)}
-                          className="h-12 rounded-xl border-slate-200 text-lg font-bold"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label className="text-xs font-bold text-blue-700 uppercase">Abono a Capital</Label>
-                        <Input 
-                          type="number" min="0" step="0.01" 
-                          value={customCapital} onChange={(e) => setCustomCapital(e.target.value)}
-                          className="h-12 rounded-xl border-slate-200 text-lg font-bold"
-                        />
-                      </div>
+                    <div className="grid gap-2">
+                      <Label className="text-xs font-bold text-slate-700 uppercase">Tipo de pago</Label>
+                      <Select value={paymentMode} onValueChange={(v: any) => setPaymentMode(v)}>
+                        <SelectTrigger className="h-12 rounded-xl border-slate-200 bg-white font-bold text-slate-800">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="interest">Pago a Réditos (Sólo interés)</SelectItem>
+                          <SelectItem value="capital">Abono a Capital (Sólo capital)</SelectItem>
+                          <SelectItem value="both">Abono a Ambos (Personalizado)</SelectItem>
+                          <SelectItem value="full">Saldar Préstamo (Pago total)</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    {(paymentMode === "both" || paymentMode === "capital") && (
+                      <div className="grid gap-4 sm:grid-cols-2 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                        {paymentMode === "both" && (
+                          <div className="grid gap-2">
+                            <Label className="text-xs font-bold text-violet-700 uppercase">Pago a Réditos</Label>
+                            <Input 
+                              type="number" min="0" step="0.01" 
+                              value={customInterest} onChange={(e) => setCustomInterest(e.target.value)}
+                              className="h-12 rounded-xl border-white bg-white text-lg font-bold shadow-sm"
+                            />
+                          </div>
+                        )}
+                        <div className="grid gap-2">
+                          <Label className="text-xs font-bold text-blue-700 uppercase">Abono a Capital</Label>
+                          <Input 
+                            type="number" min="0" step="0.01" 
+                            value={customCapital} onChange={(e) => setCustomCapital(e.target.value)}
+                            className="h-12 rounded-xl border-white bg-white text-lg font-bold shadow-sm"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {breakdown && (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden mt-4">
-                      <div className="flex items-center justify-between px-5 py-3.5 bg-white">
-                        <span className="text-xs text-slate-400">Capital pendiente tras este pago</span>
-                        <span className="text-xs font-bold text-slate-600">{money(Math.max(0, breakdown.remainingCapital - paidCapitalVal))}</span>
-                      </div>
+                      {paymentMode === "full" ? (
+                         <div className="flex items-center justify-between px-5 py-3.5 bg-emerald-50">
+                           <span className="text-sm font-bold text-emerald-700">El préstamo quedará saldado</span>
+                           <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                         </div>
+                      ) : (
+                         <div className="flex items-center justify-between px-5 py-3.5 bg-white">
+                           <span className="text-xs text-slate-500 font-medium">Capital pendiente tras este pago</span>
+                           <span className="text-sm font-bold text-slate-800">
+                             {paymentMode === "interest" 
+                               ? money(breakdown.remainingCapital)
+                               : money(Math.max(0, breakdown.remainingCapital - paidCapitalVal))
+                             }
+                           </span>
+                         </div>
+                      )}
                     </div>
                   )}
                   <div className="flex gap-3 pt-1">

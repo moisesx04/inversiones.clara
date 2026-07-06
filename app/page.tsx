@@ -1075,11 +1075,143 @@ export default function Home() {
                                 )}
                               </Td>
                               <Td>
-                                <Button variant={payment.paid ? "outline" : "default"} size="sm"
+                                  <Button variant={payment.paid ? "outline" : "default"} size="sm"
                                   className={`h-8 rounded-xl text-xs font-bold ${payment.paid ? "text-slate-500" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
                                   onClick={() => payment.paid ? unmarkPayment(payment.id) : openPaymentDialog(payment.id)}>
                                   {payment.paid ? "Desmarcar" : "Pagar"}
                                 </Button>
+                               </Td>
+                             </tr>
+                           );
+                         })}
+                       </tbody>
+                     </TableShell>
+                   )}
+                 </Card>
+               </div>
+             )}
+
+           </div>
+         </main>
+       </div>
+
+      {/* ── Payment Mode Dialog ── */}
+      <AnimatePresence>
+        {selectedPaymentId && (() => {
+          const payment = state.payments.find((p) => p.id === selectedPaymentId);
+          const loan    = payment ? findLoan(payment.loanId) : null;
+          const client  = loan ? findClient(loan.clientId) : null;
+          const breakdown = payment ? loanBreakdown(payment.loanId) : null;
+          const split   = payment ? calculatePaymentSplit(payment, paymentMode) : null;
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+              onClick={(e) => { if (e.target === e.currentTarget) setSelectedPaymentId(""); }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 12 }}
+                transition={{ duration: 0.22 }}
+                className="w-full max-w-md rounded-3xl border border-slate-200 bg-white shadow-2xl"
+              >
+                <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-slate-900">Registrar pago</h2>
+                    <p className="text-sm text-slate-500 mt-0.5">{client?.name || "Cliente"} · Cuota #{payment?.number}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedPaymentId("")} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <div className="p-6 space-y-5">
+                  <div className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between">
+                    <span className="text-sm font-bold text-slate-600">Monto de la cuota</span>
+                    <span className="text-2xl font-extrabold text-slate-900">{payment ? money(payment.amount) : "-"}</span>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-sm font-bold text-slate-700">¿Cómo se aplica este pago?</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        { value: "interest", label: "Réditos",  desc: "Solo interés",      color: "violet"  },
+                        { value: "capital",  label: "Capital",  desc: "Solo capital",      color: "blue"    },
+                        { value: "both",     label: "Ambos",    desc: "Interés + capital", color: "emerald" },
+                      ] as const).map(({ value, label, desc, color }) => {
+                        const active = paymentMode === value;
+                        const colorStyles: Record<string, string> = {
+                          violet:  active ? "border-violet-500 bg-violet-50"    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/50",
+                          blue:    active ? "border-blue-500 bg-blue-50"        : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/50",
+                          emerald: active ? "border-emerald-500 bg-emerald-50"  : "border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50",
+                        };
+                        const dotStyles: Record<string, string> = {
+                          violet:  active ? "bg-violet-500"  : "bg-slate-300",
+                          blue:    active ? "bg-blue-500"    : "bg-slate-300",
+                          emerald: active ? "bg-emerald-500" : "bg-slate-300",
+                        };
+                        return (
+                          <button key={value} type="button" onClick={() => setPaymentMode(value)}
+                            className={`rounded-2xl border-2 p-4 text-left transition-all shadow-sm ${colorStyles[color]}`}>
+                            <div className={`h-3 w-3 rounded-full mb-2 ${dotStyles[color]}`} />
+                            <p className="text-sm font-extrabold text-slate-800">{label}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{desc}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {split && breakdown && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden">
+                      <div className="flex items-center justify-between px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+                          <span className="text-sm font-semibold text-slate-700">Réditos (interés)</span>
+                        </div>
+                        <span className="text-sm font-extrabold text-violet-700">{money(split.paidInterest)}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-5 py-3.5">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                          <span className="text-sm font-semibold text-slate-700">Capital</span>
+                        </div>
+                        <span className="text-sm font-extrabold text-blue-700">{money(split.paidCapital)}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-5 py-3.5 bg-white">
+                        <span className="text-xs text-slate-400">Réditos pendientes tras pago</span>
+                        <span className="text-xs font-bold text-slate-600">{money(Math.max(0, breakdown.remainingInterest - split.paidInterest))}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-5 py-3.5 bg-white">
+                        <span className="text-xs text-slate-400">Capital pendiente tras pago</span>
+                        <span className="text-xs font-bold text-slate-600">{money(Math.max(0, breakdown.remainingCapital - split.paidCapital))}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-3 pt-1">
+                    <Button type="button" variant="outline" className="flex-1 h-12 rounded-2xl font-semibold" onClick={() => setSelectedPaymentId("")}>
+                      Cancelar
+                    </Button>
+                    <Button type="button" className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-lg shadow-emerald-200" onClick={confirmPayment}>
+                      <CheckCircle2 className="h-5 w-5" />
+                      Confirmar pago
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
+      <ToastViewport />
+    </div>
+  );
+}
+
+// ═══════════════ CHART COMPONENTS ════════════════════════════════
+
+interface BarChartData { label: string; collected: number; expected: number }
 
 function BarChart({ data }: { data: BarChartData[] }) {
   const maxVal = Math.max(...data.flatMap((d) => [d.collected, d.expected]), 1);
@@ -1089,6 +1221,7 @@ function BarChart({ data }: { data: BarChartData[] }) {
   return (
     <div className="w-full overflow-x-auto">
       <svg viewBox={`0 0 ${W} ${H + 40}`} className="w-full" style={{ minWidth: 320 }}>
+
         {/* Y grid */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => {
           const y = PAD + (1 - t) * H;

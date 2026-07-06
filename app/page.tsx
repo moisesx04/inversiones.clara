@@ -69,6 +69,9 @@ const initialState: StoreState = {
   ],
   loans: [],
   payments: [],
+  sans: [],
+  sanClients: [],
+  sanPayments: [],
 };
 
 const navItems = [
@@ -76,6 +79,7 @@ const navItems = [
   { id: "clientes",     label: "Clientes",        icon: Users },
   { id: "prestamos",    label: "Préstamos",       icon: Banknote },
   { id: "pagos",        label: "Pagos",           icon: CalendarClock },
+  { id: "san",          label: "SAN",             icon: Wallet },
   { id: "configuracion",label: "Configuración",   icon: Settings },
 ];
 
@@ -88,9 +92,12 @@ export default function Home() {
   const [clientSearch, setClientSearch] = useState("");
   const [loanSearch, setLoanSearch]     = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
+  const [sanSearch, setSanSearch]       = useState("");
+  const [activeSanId, setActiveSanId]   = useState("");
   const [paymentFilter, setPaymentFilter] = useState("pending");
   const [selectedPaymentId, setSelectedPaymentId] = useState("");
-  const [paymentMode, setPaymentMode] = useState<"interest" | "capital" | "both">("both");
+  const [customInterest, setCustomInterest] = useState<string>("");
+  const [customCapital, setCustomCapital] = useState<string>("");
   const [reminderDays, setReminderDays] = useState("2");
   const [clientOpen, setClientOpen]     = useState(false);
   const [loanOpen, setLoanOpen]         = useState(false);
@@ -408,40 +415,55 @@ export default function Home() {
     };
   }
 
-  function calculatePaymentSplit(payment: Payment, mode: "interest" | "capital" | "both") {
-    const breakdown = loanBreakdown(payment.loanId);
-    if (mode === "interest") {
-      return { paidInterest: roundMoney(payment.amount), paidCapital: 0 };
-    }
-    if (mode === "capital") {
-      return { paidInterest: 0, paidCapital: roundMoney(payment.amount) };
-    }
-    const paidInterest = roundMoney(Math.min(payment.amount, breakdown.remainingInterest));
-    return {
-      paidInterest,
-      paidCapital: roundMoney(payment.amount - paidInterest),
-    };
-  }
-
   function openPaymentDialog(id: string) {
-    setPaymentMode("both");
+    const payment = state.payments.find((p) => p.id === id);
+    if (payment) {
+      setCustomInterest(String(payment.amount));
+      setCustomCapital("0");
+    }
     setSelectedPaymentId(id);
   }
 
   function confirmPayment() {
     const payment = state.payments.find((p) => p.id === selectedPaymentId);
     if (!payment) return;
-    const split = calculatePaymentSplit(payment, paymentMode);
-    setState((c) => ({
-      ...c,
-      payments: c.payments.map((p) =>
-        p.id === selectedPaymentId
-          ? { ...p, paid: true, paidAt: new Date().toISOString(), paidMode: paymentMode, ...split }
-          : p,
-      ),
-    }));
+    const loan = state.loans.find((l) => l.id === payment.loanId);
+    if (!loan) return;
+
+    const paidInterest = Number(customInterest) || 0;
+    const paidCapital = Number(customCapital) || 0;
+
+    const breakdown = loanBreakdown(loan.id);
+    const remainingCapitalAfterPayment = Math.max(0, breakdown.remainingCapital - paidCapital);
+
+    let newPayments = state.payments.map((p) =>
+      p.id === selectedPaymentId
+        ? { ...p, paid: true, paidAt: new Date().toISOString(), paidMode: "both" as const, paidInterest, paidCapital }
+        : p
+    );
+
+    if (remainingCapitalAfterPayment > 0) {
+      let ratePerPeriod = loan.interestRate;
+      if (loan.frequency === "weekly") ratePerPeriod = loan.interestRate / 4;
+      else if (loan.frequency === "biweekly") ratePerPeriod = loan.interestRate / 2;
+
+      const nextInterestAmount = roundMoney(remainingCapitalAfterPayment * (ratePerPeriod / 100));
+      
+      const nextPayment: Payment = {
+        id: crypto.randomUUID(),
+        loanId: loan.id,
+        number: payment.number + 1,
+        dueDate: addPeriod(payment.dueDate, loan.frequency, 1),
+        amount: nextInterestAmount,
+        paid: false,
+        paidAt: "",
+      };
+      newPayments.push(nextPayment);
+    }
+
+    setState((c) => ({ ...c, payments: newPayments }));
     setSelectedPaymentId("");
-    toast("Pago registrado", `Reditos: ${money(split.paidInterest)} · Capital: ${money(split.paidCapital)}.`, "success");
+    toast("Pago registrado", `Réditos: ${money(paidInterest)} · Capital: ${money(paidCapital)}.`, "success");
   }
 
   function unmarkPayment(id: string) {
@@ -651,10 +673,11 @@ export default function Home() {
   // ── Dashboard ────────────────────────────────────────────────
   const activeNav   = navItems.find((n) => n.id === activeTab);
   const headingMap: Record<string, string> = {
-    inicio:        "Panel principal",
-    clientes:      "Gestión de clientes",
-    prestamos:     "Préstamos activos",
-    pagos:         "Registro de pagos",
+    inicio: "Panel de control",
+    clientes: "Mis clientes",
+    prestamos: "Préstamos",
+    pagos: "Gestión de cobros",
+    san: "Ahorros Colectivos (SAN)",
     configuracion: "Configuración",
   };
 
@@ -1227,6 +1250,57 @@ export default function Home() {
               </div>
             )}
 
+            {/* ════ SAN (Ahorros Colectivos) ════ */}
+            {activeTab === "san" && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-slate-900">Ahorros Colectivos (SAN)</h2>
+                    <p className="text-sm text-slate-500 mt-1">Gestiona grupos de ahorro y cobros por turnos.</p>
+                  </div>
+                  <Button className="h-12 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-200 gap-2">
+                    <Plus className="h-5 w-5" />
+                    Nuevo SAN
+                  </Button>
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {state.sans.length === 0 ? (
+                    <div className="col-span-full py-16 text-center bg-white rounded-3xl border border-slate-200">
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                        <Wallet className="h-8 w-8 text-slate-400" />
+                      </div>
+                      <h3 className="mt-4 text-lg font-bold text-slate-800">No hay SANs activos</h3>
+                      <p className="mt-1 text-sm text-slate-500">Crea tu primer SAN para empezar a gestionar ahorros colectivos.</p>
+                    </div>
+                  ) : (
+                    state.sans.map((san) => (
+                      <Card key={san.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all">
+                        <CardHeader className="pb-3 border-b border-slate-100">
+                          <CardTitle className="text-lg font-bold text-slate-900 flex items-center justify-between">
+                            {san.name}
+                            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{san.status}</Badge>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-4 pb-4">
+                          <div className="space-y-3">
+                            <div className="flex justify-between text-sm">
+                              <span className="text-slate-500 font-medium">Cuota:</span>
+                              <span className="font-bold text-slate-800">{money(san.quotaAmount)} ({san.frequency})</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-slate-500 font-medium">Participantes:</span>
+                              <span className="font-bold text-slate-800">{state.sanClients.filter(c => c.sanId === san.id).length} / {san.participantCount}</span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ════ CONFIGURACIÓN ════ */}
             {activeTab === "configuracion" && (
               <div className="grid gap-6 max-w-4xl">
@@ -1404,7 +1478,8 @@ export default function Home() {
           const loan    = payment ? findLoan(payment.loanId) : null;
           const client  = loan ? findClient(loan.clientId) : null;
           const breakdown = payment ? loanBreakdown(payment.loanId) : null;
-          const split   = payment ? calculatePaymentSplit(payment, paymentMode) : null;
+          const paidInterestVal = Number(customInterest) || 0;
+          const paidCapitalVal  = Number(customCapital) || 0;
           return (
             <motion.div
               initial={{ opacity: 0 }}
@@ -1431,62 +1506,37 @@ export default function Home() {
                 </div>
                 <div className="p-6 space-y-5">
                   <div className="rounded-2xl bg-slate-50 border border-slate-200 px-5 py-4 flex items-center justify-between">
-                    <span className="text-sm font-bold text-slate-600">Monto de la cuota</span>
+                    <span className="text-sm font-bold text-slate-600">Réditos generados (Mes)</span>
                     <span className="text-2xl font-extrabold text-slate-900">{payment ? money(payment.amount) : "-"}</span>
                   </div>
-                  <div className="space-y-3">
-                    <p className="text-sm font-bold text-slate-700">¿Cómo se aplica este pago?</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      {([
-                        { value: "interest", label: "Réditos",  desc: "Solo interés",      color: "violet"  },
-                        { value: "capital",  label: "Capital",  desc: "Solo capital",      color: "blue"    },
-                        { value: "both",     label: "Ambos",    desc: "Interés + capital", color: "emerald" },
-                      ] as const).map(({ value, label, desc, color }) => {
-                        const active = paymentMode === value;
-                        const colorStyles: Record<string, string> = {
-                          violet:  active ? "border-violet-500 bg-violet-50"    : "border-slate-200 hover:border-violet-300 hover:bg-violet-50/50",
-                          blue:    active ? "border-blue-500 bg-blue-50"        : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/50",
-                          emerald: active ? "border-emerald-500 bg-emerald-50"  : "border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50",
-                        };
-                        const dotStyles: Record<string, string> = {
-                          violet:  active ? "bg-violet-500"  : "bg-slate-300",
-                          blue:    active ? "bg-blue-500"    : "bg-slate-300",
-                          emerald: active ? "bg-emerald-500" : "bg-slate-300",
-                        };
-                        return (
-                          <button key={value} type="button" onClick={() => setPaymentMode(value)}
-                            className={`rounded-2xl border-2 p-4 text-left transition-all shadow-sm ${colorStyles[color]}`}>
-                            <div className={`h-3 w-3 rounded-full mb-2 ${dotStyles[color]}`} />
-                            <p className="text-sm font-extrabold text-slate-800">{label}</p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">{desc}</p>
-                          </button>
-                        );
-                      })}
+                  
+                  <div className="space-y-4">
+                    <p className="text-sm font-bold text-slate-700">Monto entregado por el cliente:</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label className="text-xs font-bold text-violet-700 uppercase">Pago a Réditos</Label>
+                        <Input 
+                          type="number" min="0" step="0.01" 
+                          value={customInterest} onChange={(e) => setCustomInterest(e.target.value)}
+                          className="h-12 rounded-xl border-slate-200 text-lg font-bold"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label className="text-xs font-bold text-blue-700 uppercase">Abono a Capital</Label>
+                        <Input 
+                          type="number" min="0" step="0.01" 
+                          value={customCapital} onChange={(e) => setCustomCapital(e.target.value)}
+                          className="h-12 rounded-xl border-slate-200 text-lg font-bold"
+                        />
+                      </div>
                     </div>
                   </div>
-                  {split && breakdown && (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden">
-                      <div className="flex items-center justify-between px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
-                          <span className="text-sm font-semibold text-slate-700">Réditos (interés)</span>
-                        </div>
-                        <span className="text-sm font-extrabold text-violet-700">{money(split.paidInterest)}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-                          <span className="text-sm font-semibold text-slate-700">Capital</span>
-                        </div>
-                        <span className="text-sm font-extrabold text-blue-700">{money(split.paidCapital)}</span>
-                      </div>
+
+                  {breakdown && (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 divide-y divide-slate-200 overflow-hidden mt-4">
                       <div className="flex items-center justify-between px-5 py-3.5 bg-white">
-                        <span className="text-xs text-slate-400">Réditos pendientes tras pago</span>
-                        <span className="text-xs font-bold text-slate-600">{money(Math.max(0, breakdown.remainingInterest - split.paidInterest))}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-5 py-3.5 bg-white">
-                        <span className="text-xs text-slate-400">Capital pendiente tras pago</span>
-                        <span className="text-xs font-bold text-slate-600">{money(Math.max(0, breakdown.remainingCapital - split.paidCapital))}</span>
+                        <span className="text-xs text-slate-400">Capital pendiente tras este pago</span>
+                        <span className="text-xs font-bold text-slate-600">{money(Math.max(0, breakdown.remainingCapital - paidCapitalVal))}</span>
                       </div>
                     </div>
                   )}

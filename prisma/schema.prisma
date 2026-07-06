@@ -57,3 +57,47 @@ model Setting {
 
   @@map("settings")
 }
+
+model SanGroup {
+  id               String       @id @default(uuid())
+  name             String
+  quotaAmount      Float
+  frequency        String
+  startDate        String
+  participantCount Int
+  status           String
+  createdAt        DateTime     @default(now())
+  clients          SanClient[]
+  payments         SanPayment[]
+
+  @@map("san_groups")
+}
+
+model SanClient {
+  id         String       @id @default(uuid())
+  sanId      String
+  name       String
+  phone      String
+  document   String       @default("")
+  turnNumber Int
+  status     String
+  notes      String       @default("")
+  san        SanGroup     @relation(fields: [sanId], references: [id], onDelete: Cascade)
+  payments   SanPayment[]
+
+  @@map("san_clients")
+}
+
+model SanPayment {
+  id          String    @id @default(uuid())
+  sanId       String
+  sanClientId String
+  quotaNumber Int
+  amount      Float
+  date        String
+  status      String
+  san         SanGroup  @relation(fields: [sanId], references: [id], onDelete: Cascade)
+  client      SanClient @relation(fields: [sanClientId], references: [id], onDelete: Cascade)
+
+  @@map("san_payments")
+}

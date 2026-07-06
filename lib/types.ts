@@ -32,8 +32,43 @@ export type Payment = {
   paidCapital?: number;
 };
 
+export type SanGroup = {
+  id: string;
+  name: string;
+  quotaAmount: number;
+  frequency: "weekly" | "biweekly" | "monthly";
+  startDate: string;
+  participantCount: number;
+  status: "active" | "completed" | "cancelled";
+  createdAt: string;
+};
+
+export type SanClient = {
+  id: string;
+  sanId: string;
+  name: string;
+  phone: string;
+  document: string;
+  turnNumber: number;
+  status: "active" | "withdrawn";
+  notes: string;
+};
+
+export type SanPayment = {
+  id: string;
+  sanId: string;
+  sanClientId: string;
+  quotaNumber: number;
+  amount: number;
+  date: string;
+  status: "pending" | "paid" | "late";
+};
+
 export type StoreState = {
   clients: Client[];
   loans: Loan[];
   payments: Payment[];
+  sans: SanGroup[];
+  sanClients: SanClient[];
+  sanPayments: SanPayment[];
 };

@@ -103,6 +103,8 @@ export default function Home() {
   const [clientOpen, setClientOpen]     = useState(false);
   const [loanOpen, setLoanOpen]         = useState(false);
   const [sanOpen, setSanOpen]           = useState(false);
+  const [sanClientOpen, setSanClientOpen] = useState(false);
+  const [selectedRound, setSelectedRound] = useState(1);
   const [ready, setReady]               = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [notifOpen, setNotifOpen]       = useState(false);
@@ -436,6 +438,35 @@ export default function Home() {
     setState((c) => ({ ...c, sans: [...c.sans, newSan] }));
     setSanOpen(false);
     toast("SAN creado", `Grupo "${name}" creado exitosamente.`, "success");
+  }
+
+  function addSanClient(formData: FormData) {
+    const sanId = activeSanId;
+    const name = String(formData.get("name") || "");
+    const phone = String(formData.get("phone") || "");
+    const document = String(formData.get("document") || "");
+    const turnNumber = Number(formData.get("turnNumber") || 0);
+    const notes = String(formData.get("notes") || "");
+
+    const newSanClient: SanClient = {
+      id: crypto.randomUUID(), sanId, name, phone, document, turnNumber, status: "active", notes
+    };
+
+    setState((c) => ({ ...c, sanClients: [...c.sanClients, newSanClient] }));
+    setSanClientOpen(false);
+    toast("Participante añadido", `Agregado al turno ${turnNumber}.`, "success");
+  }
+
+  function toggleSanPayment(sanClientId: string, amount: number) {
+    const existing = state.sanPayments.find(p => p.sanClientId === sanClientId && p.roundNumber === selectedRound);
+    if (existing) {
+      setState(c => ({ ...c, sanPayments: c.sanPayments.filter(p => p.id !== existing.id) }));
+    } else {
+      const newPayment: SanPayment = {
+        id: crypto.randomUUID(), sanId: activeSanId, sanClientId, roundNumber: selectedRound, amount, paidAt: new Date().toISOString()
+      };
+      setState(c => ({ ...c, sanPayments: [...c.sanPayments, newPayment] }));
+    }
   }
 
   function loanBreakdown(loanId: string) {
@@ -1356,40 +1387,157 @@ export default function Home() {
                   </Dialog>
                 </div>
 
-                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {state.sans.length === 0 ? (
-                    <div className="col-span-full py-16 text-center bg-white rounded-3xl border border-slate-200">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                        <Wallet className="h-8 w-8 text-slate-400" />
+                {!activeSanId ? (
+                  <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                    {state.sans.length === 0 ? (
+                      <div className="col-span-full py-16 text-center bg-white rounded-3xl border border-slate-200">
+                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                          <Wallet className="h-8 w-8 text-slate-400" />
+                        </div>
+                        <h3 className="mt-4 text-lg font-bold text-slate-800">No hay SANs activos</h3>
+                        <p className="mt-1 text-sm text-slate-500">Crea tu primer SAN para empezar a gestionar ahorros colectivos.</p>
                       </div>
-                      <h3 className="mt-4 text-lg font-bold text-slate-800">No hay SANs activos</h3>
-                      <p className="mt-1 text-sm text-slate-500">Crea tu primer SAN para empezar a gestionar ahorros colectivos.</p>
+                    ) : (
+                      state.sans.map((san) => (
+                        <Card key={san.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all cursor-pointer" onClick={() => setActiveSanId(san.id)}>
+                          <CardHeader className="pb-3 border-b border-slate-100">
+                            <CardTitle className="text-lg font-bold text-slate-900 flex items-center justify-between">
+                              {san.name}
+                              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{san.status}</Badge>
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent className="pt-4 pb-4">
+                            <div className="space-y-3">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-slate-500 font-medium">Cuota:</span>
+                                <span className="font-bold text-slate-800">{money(san.quotaAmount)} ({san.frequency})</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-slate-500 font-medium">Participantes:</span>
+                                <span className="font-bold text-slate-800">{state.sanClients.filter(c => c.sanId === san.id).length} / {san.participantCount}</span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    )}
+                  </div>
+                ) : (() => {
+                  const san = state.sans.find(s => s.id === activeSanId);
+                  if (!san) return null;
+                  const clients = state.sanClients.filter(c => c.sanId === san.id).sort((a, b) => a.turnNumber - b.turnNumber);
+                  
+                  return (
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-4">
+                        <Button variant="outline" size="sm" onClick={() => setActiveSanId("")} className="rounded-xl border-slate-200">
+                          Volver a SANs
+                        </Button>
+                        <h3 className="text-lg font-bold text-slate-800">{san.name} - Detalles</h3>
+                      </div>
+
+                      <div className="grid lg:grid-cols-2 gap-6">
+                        {/* Clientes y Turnos */}
+                        <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+                          <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-base font-bold text-slate-800">Participantes y Turnos</CardTitle>
+                            <Dialog open={sanClientOpen} onOpenChange={setSanClientOpen}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" className="rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold gap-1">
+                                  <UserPlus className="h-4 w-4" /> Agregar
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="sm:max-w-[425px]">
+                                <DialogHeader><DialogTitle>Agregar Participante</DialogTitle></DialogHeader>
+                                <form action={addSanClient} className="space-y-4 pt-4">
+                                  <Field name="name" label="Nombre" required />
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <Field name="phone" label="Teléfono" required />
+                                    <Field name="document" label="Cédula (Opcional)" />
+                                  </div>
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <Field name="turnNumber" label="Número de Turno" type="number" min="1" max={san.participantCount} required />
+                                  </div>
+                                  <Field name="notes" label="Observaciones (Opcional)" />
+                                  <Button type="submit" className="w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold">Guardar</Button>
+                                </form>
+                              </DialogContent>
+                            </Dialog>
+                          </CardHeader>
+                          <CardContent>
+                            {clients.length === 0 ? (
+                              <p className="text-sm text-slate-500 py-6 text-center">No hay participantes agregados.</p>
+                            ) : (
+                              <div className="space-y-3 mt-4">
+                                {clients.map(client => (
+                                  <div key={client.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100">
+                                    <div>
+                                      <p className="font-bold text-slate-800 flex items-center gap-2">
+                                        <Badge className="bg-slate-200 text-slate-700">Turno {client.turnNumber}</Badge>
+                                        {client.name}
+                                      </p>
+                                      <p className="text-xs text-slate-500 mt-1">{client.phone} {client.document && `- ${client.document}`}</p>
+                                    </div>
+                                    <Badge className="bg-emerald-100 text-emerald-700">{client.status}</Badge>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        {/* Pagos por Ronda */}
+                        <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+                          <CardHeader className="flex flex-row items-center justify-between pb-2">
+                            <CardTitle className="text-base font-bold text-slate-800">Pagos de Cuota</CardTitle>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs text-slate-500">Ronda / Cuota:</Label>
+                              <Select value={String(selectedRound)} onValueChange={(val) => setSelectedRound(Number(val))}>
+                                <SelectTrigger className="h-8 w-24 text-xs font-bold rounded-lg border-slate-200"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {Array.from({ length: san.participantCount }, (_, i) => i + 1).map(round => (
+                                    <SelectItem key={round} value={String(round)}>Ronda {round}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-xl mb-4 font-medium flex justify-between items-center">
+                              <span>Esta ronda la cobra el <b>Turno {selectedRound}</b></span>
+                              <span>Total a cobrar: <b>{money(san.quotaAmount * clients.length)}</b></span>
+                            </div>
+                            {clients.length === 0 ? (
+                              <p className="text-sm text-slate-500 text-center py-4">Agrega participantes primero.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {clients.map(client => {
+                                  const paid = state.sanPayments.some(p => p.sanClientId === client.id && p.roundNumber === selectedRound);
+                                  return (
+                                    <div key={client.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors">
+                                      <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-slate-700">{client.name}</span>
+                                        <span className="text-xs text-slate-500">Turno {client.turnNumber}</span>
+                                      </div>
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => toggleSanPayment(client.id, san.quotaAmount)}
+                                        className={`rounded-xl h-8 text-xs font-bold w-24 ${paid ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                      >
+                                        {paid ? "Pagado ✓" : "Cobrar"}
+                                      </Button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
                     </div>
-                  ) : (
-                    state.sans.map((san) => (
-                      <Card key={san.id} className="rounded-3xl border border-slate-200 bg-white shadow-sm hover:shadow-lg transition-all">
-                        <CardHeader className="pb-3 border-b border-slate-100">
-                          <CardTitle className="text-lg font-bold text-slate-900 flex items-center justify-between">
-                            {san.name}
-                            <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">{san.status}</Badge>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-4 pb-4">
-                          <div className="space-y-3">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-slate-500 font-medium">Cuota:</span>
-                              <span className="font-bold text-slate-800">{money(san.quotaAmount)} ({san.frequency})</span>
-                            </div>
-                            <div className="flex justify-between text-sm">
-                              <span className="text-slate-500 font-medium">Participantes:</span>
-                              <span className="font-bold text-slate-800">{state.sanClients.filter(c => c.sanId === san.id).length} / {san.participantCount}</span>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
+                  );
+                })()}
               </div>
             )}
 

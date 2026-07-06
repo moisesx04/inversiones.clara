@@ -92,10 +92,9 @@ model SanPayment {
   id          String    @id @default(uuid())
   sanId       String
   sanClientId String
-  quotaNumber Int
+  roundNumber Int
   amount      Float
-  date        String
-  status      String
+  paidAt      String
   san         SanGroup  @relation(fields: [sanId], references: [id], onDelete: Cascade)
   client      SanClient @relation(fields: [sanClientId], references: [id], onDelete: Cascade)
 

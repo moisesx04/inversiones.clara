@@ -58,10 +58,9 @@ export type SanPayment = {
   id: string;
   sanId: string;
   sanClientId: string;
-  quotaNumber: number;
+  roundNumber: number;
   amount: number;
-  date: string;
-  status: "pending" | "paid" | "late";
+  paidAt: string;
 };
 
 export type StoreState = {

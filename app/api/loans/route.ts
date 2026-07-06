@@ -10,7 +10,7 @@ export async function GET() {
       prisma.payment.findMany({ orderBy: { number: "asc" } }),
       prisma.sanGroup.findMany({ orderBy: { createdAt: "asc" } }),
       prisma.sanClient.findMany({ orderBy: { turnNumber: "asc" } }),
-      prisma.sanPayment.findMany({ orderBy: { quotaNumber: "asc" } }),
+      prisma.sanPayment.findMany({ orderBy: { roundNumber: "asc" } }),
     ]);
 
     const state: StoreState = {
@@ -44,7 +44,7 @@ export async function GET() {
       })),
       sans: sans.map(s => ({ ...s, frequency: s.frequency as "weekly" | "biweekly" | "monthly", status: s.status as "active" | "completed" | "cancelled", createdAt: s.createdAt.toISOString() })),
       sanClients: sanClients.map(sc => ({ ...sc, status: sc.status as "active" | "withdrawn" })),
-      sanPayments: sanPayments.map(sp => ({ ...sp, status: sp.status as "paid" | "pending" | "late" })),
+      sanPayments: sanPayments.map(sp => ({ ...sp })),
     };
 
     return NextResponse.json(state);
@@ -201,8 +201,8 @@ export async function POST(request: Request) {
     for (const sp of body.sanPayments || []) {
       await prisma.sanPayment.upsert({
         where: { id: sp.id },
-        create: { id: sp.id, sanId: sp.sanId, sanClientId: sp.sanClientId, quotaNumber: sp.quotaNumber, amount: sp.amount, date: sp.date, status: sp.status },
-        update: { quotaNumber: sp.quotaNumber, amount: sp.amount, date: sp.date, status: sp.status },
+        create: { id: sp.id, sanId: sp.sanId, sanClientId: sp.sanClientId, roundNumber: sp.roundNumber, amount: sp.amount, paidAt: sp.paidAt },
+        update: { roundNumber: sp.roundNumber, amount: sp.amount, paidAt: sp.paidAt },
       });
     }
 

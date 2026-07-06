@@ -96,6 +96,7 @@ export default function Home() {
   const [loanOpen, setLoanOpen]         = useState(false);
   const [ready, setReady]               = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
+  const [notifOpen, setNotifOpen]       = useState(false);
   const reminderToastRef = useRef("");
   const headingRef  = useRef<HTMLHeadingElement>(null);
   const contentRef  = useRef<HTMLDivElement>(null);
@@ -200,25 +201,44 @@ export default function Home() {
     });
   }, [loanSearch, state.clients, state.loans]);
 
-  const visiblePayments = useMemo(
-    () =>
-      state.payments
-        .filter((p) => {
-          if (paymentFilter === "all")     return true;
-          if (paymentFilter === "paid")    return p.paid;
-          if (paymentFilter === "late")    return !p.paid && isLate(p.dueDate);
-          return !p.paid;
-        })
-        .filter((p) => {
-          const q = paymentSearch.trim().toLowerCase();
-          if (!q) return true;
-          const loan = state.loans.find((l) => l.id === p.loanId);
-          const client = state.clients.find((c) => c.id === loan?.clientId);
-          return `${client?.name || ""} ${client?.phone || ""} ${p.number} ${p.dueDate} ${p.amount}`.toLowerCase().includes(q);
-        })
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [paymentFilter, paymentSearch, state.clients, state.loans, state.payments],
-  );
+  // One entry per client: next pending, or last paid if no pending
+  const clientPaymentRows = useMemo(() => {
+    return state.clients
+      .map((client) => {
+        const clientLoans = state.loans.filter((l) => l.clientId === client.id);
+        const allPayments = state.payments.filter((p) => clientLoans.some((l) => l.id === p.loanId));
+        const pending = allPayments.filter((p) => !p.paid).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+        const paid    = allPayments.filter((p) => p.paid).sort((a, b) => (b.paidAt || "").localeCompare(a.paidAt || ""));
+        const next    = pending[0] || paid[0];
+        if (!next) return null;
+        const loan = clientLoans.find((l) => l.id === next.loanId);
+        return { client, payment: next, loan, pendingCount: pending.length, paidCount: paid.length };
+      })
+      .filter(Boolean)
+      .filter((row) => {
+        const q = paymentSearch.trim().toLowerCase();
+        if (!q) return true;
+        return `${row!.client.name} ${row!.client.phone} ${row!.client.document}`.toLowerCase().includes(q);
+      })
+      .filter((row) => {
+        if (paymentFilter === "all")     return true;
+        if (paymentFilter === "paid")    return row!.payment.paid;
+        if (paymentFilter === "late")    return !row!.payment.paid && isLate(row!.payment.dueDate);
+        return !row!.payment.paid;
+      }) as { client: Client; payment: Payment; loan: Loan | undefined; pendingCount: number; paidCount: number }[];
+  }, [paymentFilter, paymentSearch, state.clients, state.loans, state.payments]);
+
+  // All overdue across all clients (for notifications)
+  const overdueRows = useMemo(() => {
+    return state.payments
+      .filter((p) => !p.paid && isLate(p.dueDate))
+      .map((p) => {
+        const loan   = state.loans.find((l) => l.id === p.loanId);
+        const client = state.clients.find((c) => c.id === loan?.clientId);
+        return client ? { client, payment: p, loan } : null;
+      })
+      .filter(Boolean) as { client: Client; payment: Payment; loan: Loan | undefined }[];
+  }, [state]);
 
   const reminderPayments = useMemo(() => dueSoonPayments(state, Number(reminderDays || 0)), [reminderDays, state]);
 
@@ -341,7 +361,7 @@ export default function Home() {
   function addLoan(formData: FormData) {
     const principal    = Number(formData.get("principal") || 0);
     const interestRate = Number(formData.get("interestRate") || 0);
-    const installments = Number(formData.get("installments") || 1);
+    const installments = 1;
     const clientId     = String(formData.get("clientId") || "");
     const total        = roundMoney(principal + principal * (interestRate / 100));
     const amount       = roundMoney(total / installments);
@@ -359,10 +379,6 @@ export default function Home() {
     }
     if (!Number.isFinite(interestRate) || interestRate < 0 || interestRate > 1000) {
       toast("Interes invalido", "Usa un porcentaje entre 0 y 1000.", "error");
-      return;
-    }
-    if (!Number.isInteger(installments) || installments < 1 || installments > 240) {
-      toast("Cuotas invalidas", "Usa entre 1 y 240 cuotas.", "error");
       return;
     }
 
@@ -724,6 +740,76 @@ export default function Home() {
               </h1>
             </div>
           </div>
+          {/* Notification bell - always visible */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setNotifOpen((o) => !o)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            >
+              <BellRing className="h-5 w-5" />
+              {overdueRows.length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-extrabold text-white">
+                  {overdueRows.length}
+                </span>
+              )}
+            </button>
+            {/* Dropdown */}
+            <AnimatePresence>
+              {notifOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setNotifOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                    transition={{ duration: 0.18 }}
+                    className="absolute right-0 top-12 z-40 w-80 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+                  >
+                    <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-extrabold text-slate-900 text-sm">Clientes con atraso</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{overdueRows.length} pago{overdueRows.length !== 1 ? "s" : ""} vencido{overdueRows.length !== 1 ? "s" : ""}</p>
+                      </div>
+                      <button onClick={() => setNotifOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                      {overdueRows.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-10 text-center">
+                          <CheckCircle2 className="h-8 w-8 text-emerald-400 mb-2" />
+                          <p className="text-sm font-bold text-slate-600">Todo al día</p>
+                          <p className="text-xs text-slate-400 mt-0.5">No hay pagos vencidos.</p>
+                        </div>
+                      ) : overdueRows.map(({ client, payment, loan }) => (
+                        <div key={payment.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-red-50 transition-colors">
+                          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 text-sm font-extrabold">
+                            {client.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-slate-900 text-sm truncate">{client.name}</p>
+                            <p className="text-xs text-red-600 font-semibold">{money(payment.amount)} · venció {formatDate(payment.dueDate)}</p>
+                          </div>
+                          <Button asChild size="sm" className="h-8 rounded-xl bg-blue-600 hover:bg-blue-700 flex-shrink-0">
+                            <a href={reminderLink(client)} target="_blank" rel="noreferrer"><MessageCircle className="h-3.5 w-3.5" /></a>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    {overdueRows.length > 0 && (
+                      <div className="border-t border-slate-100 px-5 py-3">
+                        <button onClick={() => { setActiveTab("pagos"); setPaymentFilter("late"); setNotifOpen(false); }}
+                          className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+                          Ver todos los atrasados →
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Header CTA */}
           <div className="flex items-center gap-3">
@@ -772,21 +858,8 @@ export default function Home() {
                       <Field name="principal"   label="Capital prestado"   type="number" min="1"  step="0.01" required />
                       <Field name="interestRate" label="Interés total (%)"  type="number" min="0"  step="0.01" required />
                     </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field name="startDate"    label="Fecha de inicio"    type="date"   defaultValue={new Date().toISOString().slice(0, 10)} required />
-                      <Field
-                        name="installments"
-                        label="Número de cuotas"
-                        type="number"
-                        min="1"
-                        max="240"
-                        step="1"
-                        inputMode="numeric"
-                        defaultValue="50"
-                        placeholder="Ej. 50"
-                        selectOnFocus
-                        required
-                      />
+                    <div className="grid gap-4">
+                      <Field name="startDate" label="Fecha de inicio" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required />
                     </div>
                     <div className="grid gap-2">
                       <Label>Frecuencia de pago</Label>
@@ -1035,61 +1108,290 @@ export default function Home() {
             {/* ════ PAGOS ════ */}
             {activeTab === "pagos" && (
               <div className="space-y-5">
-                <section className="grid gap-4 md:grid-cols-3">
-                  <MiniStat label="Cuotas pendientes" value={String(metrics.pendingCount)} tone="blue" />
-                  <MiniStat label="Cuotas atrasadas" value={String(metrics.overdueCount)} tone="red" />
-                  <MiniStat label="Monto vencido" value={money(metrics.overdueBalance)} tone="amber" />
+                {/* Stats */}
+                <section className="grid gap-4 sm:grid-cols-3">
+                  <MiniStat label="Clientes pendientes" value={String(metrics.pendingPeople)} tone="blue" />
+                  <MiniStat label="Clientes atrasados"  value={String(new Set(overdueRows.map(r => r.client.id)).size)} tone="red" />
+                  <MiniStat label="Monto vencido"       value={money(metrics.overdueBalance)} tone="amber" />
                 </section>
+                {/* Search */}
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-                  <Input className="h-12 rounded-2xl border-slate-200 bg-white pl-12 text-base shadow-sm focus:border-blue-400" placeholder="Buscar pago por cliente, telefono, cuota o fecha..." value={paymentSearch} onChange={(e) => setPaymentSearch(e.target.value)} />
+                  <Input className="h-12 rounded-2xl border-slate-200 bg-white pl-12 text-base shadow-sm focus:border-blue-400" placeholder="Buscar cliente por nombre o teléfono…" value={paymentSearch} onChange={(e) => setPaymentSearch(e.target.value)} />
                 </div>
+                {/* Cards — one per client */}
+                {clientPaymentRows.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white py-24 text-center">
+                    <CalendarClock className="h-14 w-14 text-slate-300 mb-4" />
+                    <p className="text-lg font-bold text-slate-600">No hay pagos en esta vista</p>
+                    <p className="mt-1 text-sm text-slate-400">Cambia el filtro para ver otros pagos.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {clientPaymentRows.map(({ client, payment, loan, pendingCount, paidCount }) => {
+                      const late    = !payment.paid && isLate(payment.dueDate);
+                      const paidLate = payment.paid && payment.paidAt ? isLate(payment.dueDate) : false;
+                      return (
+                        <motion.div key={client.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+                          <Card className={`rounded-2xl border-2 bg-white shadow-sm hover:shadow-lg transition-all hover:-translate-y-0.5 ${
+                            late ? "border-red-300" : payment.paid ? "border-emerald-200" : "border-slate-200"
+                          }`}>
+                            <CardContent className="p-5 grid gap-4">
+                              {/* Client header */}
+                              <div className="flex items-start gap-3">
+                                <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl text-base font-extrabold ${
+                                  late ? "bg-red-100 text-red-700" : payment.paid ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                                }`}>
+                                  {client.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="font-extrabold text-slate-900 truncate">{client.name}</h3>
+                                  <p className="text-xs text-slate-500">{client.phone}</p>
+                                  {client.notes && <p className="text-xs text-slate-400 truncate mt-0.5">{client.notes}</p>}
+                                </div>
+                                <PaymentBadge payment={payment} />
+                              </div>
+
+                              {/* Payment info */}
+                              <div className={`rounded-xl p-4 space-y-2 ${
+                                late ? "bg-red-50 border border-red-200" : payment.paid ? "bg-emerald-50 border border-emerald-200" : "bg-slate-50 border border-slate-200"
+                              }`}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">Monto del pago</span>
+                                  <span className={`text-xl font-extrabold ${
+                                    late ? "text-red-700" : payment.paid ? "text-emerald-700" : "text-slate-900"
+                                  }`}>{money(payment.amount)}</span>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-slate-500">
+                                  <span>Vence: <span className={`font-semibold ${ late ? "text-red-600" : "text-slate-700"}`}>{formatDate(payment.dueDate)}</span></span>
+                                  {loan && <span>Préstamo: {money(loan.total)}</span>}
+                                </div>
+                                {payment.paid && (
+                                  <div className="pt-1 border-t border-dashed border-emerald-200 space-y-1">
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-slate-500">Pagado el:</span>
+                                      <span className={`font-bold ${ paidLate ? "text-red-600" : "text-emerald-600"}`}>
+                                        {payment.paidAt ? formatDate(payment.paidAt.slice(0,10)) : "-"}
+                                        {paidLate && " (con retraso)"}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-slate-500">Réditos:</span>
+                                      <span className="font-bold text-violet-700">{money(payment.paidInterest || 0)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-slate-500">Capital:</span>
+                                      <span className="font-bold text-blue-700">{money(payment.paidCapital || 0)}</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Counters */}
+                              <div className="flex gap-2 text-xs">
+                                <span className="rounded-lg bg-amber-100 text-amber-700 font-bold px-2.5 py-1">{pendingCount} pendiente{pendingCount !== 1 ? "s" : ""}</span>
+                                <span className="rounded-lg bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1">{paidCount} pagado{paidCount !== 1 ? "s" : ""}</span>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="flex gap-2">
+                                {!payment.paid ? (
+                                  <Button
+                                    className="flex-1 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm gap-1.5"
+                                    onClick={() => openPaymentDialog(payment.id)}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" /> Registrar pago
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    className="flex-1 h-10 rounded-xl text-sm font-semibold text-slate-500"
+                                    onClick={() => unmarkPayment(payment.id)}
+                                  >
+                                    Desmarcar
+                                  </Button>
+                                )}
+                                <Button asChild variant="outline" size="icon" className="h-10 w-10 rounded-xl flex-shrink-0">
+                                  <a href={reminderLink(client)} target="_blank" rel="noreferrer" aria-label="Avisar">
+                                    <MessageCircle className="h-4 w-4" />
+                                  </a>
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════ CONFIGURACIÓN ════ */}
+            {activeTab === "configuracion" && (
+              <div className="grid gap-6 max-w-4xl">
+
+                {/* Recordatorios */}
                 <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                {visiblePayments.length === 0
-                  ? <div className="flex flex-col items-center justify-center py-24 text-center"><CalendarClock className="h-14 w-14 text-slate-300 mb-4" /><p className="text-lg font-bold text-slate-600">No hay cuotas en esta vista</p><p className="mt-1 text-sm text-slate-400">Cambia el filtro para ver otras cuotas.</p></div>
-                  : (
-                    <TableShell>
-                      <thead>
-                        <tr className="border-b border-slate-100 bg-slate-50/50">
-                          <Th>Cliente</Th><Th>Préstamo</Th><Th>Vence</Th><Th>Cuota</Th><Th>Estado</Th><Th>Detalle</Th><Th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visiblePayments.map((payment) => {
+                  <CardHeader className="border-b border-slate-100 px-7 py-6" style={{ background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)" }}>
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg shadow-amber-200">
+                        <BellRing className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl text-slate-900">Recordatorios de pago</CardTitle>
+                        <p className="text-sm text-amber-700 mt-0.5">Configura con cuántos días de anticipación avisar a los clientes.</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-7 grid gap-7 lg:grid-cols-[1fr_1.6fr]">
+                    <div className="space-y-5">
+                      <div className="grid gap-2">
+                        <Label className="text-sm font-bold text-slate-700">Anticipación del aviso</Label>
+                        <Select value={reminderDays} onValueChange={setReminderDays}>
+                          <SelectTrigger className="h-12 rounded-xl text-base"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">1 día antes</SelectItem>
+                            <SelectItem value="2">2 días antes</SelectItem>
+                            <SelectItem value="3">3 días antes</SelectItem>
+                            <SelectItem value="7">7 días antes</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button className="h-12 w-full rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-base font-bold shadow-md shadow-amber-200" onClick={notifyUpcomingPayments}>
+                        <BellRing className="h-5 w-5" />
+                        Activar alertas
+                        {reminderPayments.length > 0 && (
+                          <span className="ml-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-white/25 px-1.5 text-xs font-extrabold">
+                            {reminderPayments.length}
+                          </span>
+                        )}
+                      </Button>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        También puedes enviar avisos individuales por WhatsApp o SMS desde la tarjeta de cada cliente.
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      <p className="text-sm font-bold text-slate-600">Clientes con pagos próximos</p>
+                      {reminderPayments.length ? (
+                        reminderPayments.slice(0, 6).map((payment) => {
                           const loan   = findLoan(payment.loanId);
                           const client = findClient(loan?.clientId);
+                          if (!client) return null;
+                          const days = daysUntil(payment.dueDate);
                           return (
-                            <tr key={payment.id} className="hover:bg-slate-50/80 transition-colors">
-                              <Td><span className="font-semibold text-slate-800">{client?.name || "Sin cliente"}</span></Td>
-                              <Td>{loan ? money(loan.total) : "-"}</Td>
-                              <Td>{formatDate(payment.dueDate)}</Td>
-                              <Td><span className="font-bold text-slate-900">{money(payment.amount)}</span></Td>
-                              <Td><PaymentBadge payment={payment} /></Td>
-                              <Td>
-                                {payment.paid ? (
-                                  <span className="text-xs text-slate-500">
-                                    R: {money(payment.paidInterest || 0)} · C: {money(payment.paidCapital || 0)}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-slate-400">Pendiente</span>
-                                )}
-                              </Td>
-                              <Td>
-                                  <Button variant={payment.paid ? "outline" : "default"} size="sm"
-                                  className={`h-8 rounded-xl text-xs font-bold ${payment.paid ? "text-slate-500" : "bg-emerald-600 hover:bg-emerald-700 text-white"}`}
-                                  onClick={() => payment.paid ? unmarkPayment(payment.id) : openPaymentDialog(payment.id)}>
-                                  {payment.paid ? "Desmarcar" : "Pagar"}
+                            <div key={payment.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 hover:bg-white transition-colors">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-slate-900">{client.name}</span>
+                                  <Badge variant={days === 0 ? "destructive" : "secondary"} className={days === 0 ? "" : "bg-amber-100 text-amber-700 border-amber-200"}>
+                                    {days === 0 ? "Hoy" : `${days}d`}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-slate-500 mt-0.5">{money(payment.amount)} · {formatDate(payment.dueDate)}</p>
+                              </div>
+                              <div className="flex gap-2 flex-shrink-0">
+                                <Button asChild size="sm" className="h-9 rounded-xl bg-blue-600 hover:bg-blue-700">
+                                  <a href={reminderLink(client)} target="_blank" rel="noreferrer"><Send className="h-3.5 w-3.5" /></a>
                                 </Button>
-                               </Td>
-                             </tr>
-                           );
-                         })}
-                       </tbody>
-                     </TableShell>
-                   )}
-                 </Card>
-               </div>
-             )}
+                                <Button size="sm" variant="outline" className="h-9 rounded-xl text-xs"
+                                  onClick={() => navigator.clipboard.writeText(reminderText(client)).then(() => toast("Copiado", "Pégalo en WhatsApp o SMS.", "success"))}>
+                                  Copiar
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-10 text-center">
+                          <CheckCircle2 className="h-8 w-8 text-emerald-400 mb-3" />
+                          <p className="font-bold text-slate-700">Todo al día</p>
+                          <p className="text-sm text-slate-400 mt-1">No hay pagos próximos en el rango seleccionado.</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Importar / Exportar */}
+                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <CardHeader className="border-b border-slate-100 px-7 py-6" style={{ background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)" }}>
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200">
+                        <Download className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl text-slate-900">Importar y exportar datos</CardTitle>
+                        <p className="text-sm text-blue-700 mt-0.5">Haz un respaldo completo o restaura desde uno anterior.</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-7">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={exportData}
+                        className="group flex flex-col items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-6 text-left hover:border-blue-400 hover:bg-blue-50 transition-all hover:shadow-md"
+                      >
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all">
+                          <Download className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800">Exportar datos</p>
+                          <p className="text-xs text-slate-500 mt-0.5">Descarga un respaldo JSON con todos tus datos.</p>
+                        </div>
+                      </button>
+                      <Label className="group flex cursor-pointer flex-col items-start gap-3 rounded-2xl border-2 border-slate-200 bg-slate-50 p-6 text-left hover:border-emerald-400 hover:bg-emerald-50 transition-all hover:shadow-md">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                          <Upload className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-800">Importar datos</p>
+                          <p className="text-xs text-slate-500 mt-0.5">Restaura desde un respaldo JSON exportado.</p>
+                        </div>
+                        <input className="hidden" type="file" accept="application/json" onChange={(e) => importData(e.target.files?.[0] ?? null)} />
+                      </Label>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Cambio de contraseña */}
+                <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                  <CardHeader className="border-b border-slate-100 px-7 py-6" style={{ background: "linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)" }}>
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-lg shadow-violet-200">
+                        <LockKeyhole className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl text-slate-900">Cambio de contraseña</CardTitle>
+                        <p className="text-sm text-violet-700 mt-0.5">Actualiza la clave de acceso al sistema.</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-7">
+                    <form action={changePassword} className="grid gap-4 max-w-md">
+                      <div className="grid gap-2">
+                        <Label htmlFor="currentPassword" className="text-sm font-bold text-slate-700">Contraseña actual</Label>
+                        <Input id="currentPassword" name="currentPassword" type="password" placeholder="••••••••" className="h-12 rounded-xl border-slate-200" required />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="newPassword" className="text-sm font-bold text-slate-700">Nueva contraseña</Label>
+                        <Input id="newPassword" name="newPassword" type="password" placeholder="Mínimo 6 caracteres" className="h-12 rounded-xl border-slate-200" required />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="confirmPassword" className="text-sm font-bold text-slate-700">Confirmar contraseña</Label>
+                        <Input id="confirmPassword" name="confirmPassword" type="password" placeholder="Repite la nueva contraseña" className="h-12 rounded-xl border-slate-200" required />
+                      </div>
+                      <Button type="submit" className="h-12 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold shadow-md shadow-violet-200 mt-1 gap-2">
+                        <LockKeyhole className="h-4 w-4" />
+                        Actualizar contraseña
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+
+              </div>
+            )}
 
            </div>
          </main>

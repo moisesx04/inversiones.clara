@@ -26,6 +26,7 @@ model Loan {
   id           String    @id @default(uuid())
   clientId     String
   principal    Float
+  reengagedCapital Float @default(0)
   interestRate Float
   total        Float
   installments Int

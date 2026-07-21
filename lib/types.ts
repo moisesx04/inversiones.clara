@@ -11,6 +11,7 @@ export type Loan = {
   id: string;
   clientId: string;
   principal: number;
+  reengagedCapital?: number;
   interestRate: number;
   total: number;
   startDate: string;

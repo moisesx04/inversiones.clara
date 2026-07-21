@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 40% 98%;
+  --background: 215 33% 97%;
   --foreground: 222 47% 8%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 8%;
@@ -44,6 +44,42 @@ body {
   font-feature-settings: "rlig" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button, a, input, textarea, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at 78% -10%, rgb(219 234 254 / 0.75), transparent 31rem),
+    hsl(var(--background));
+}
+
+::selection {
+  background: #bfdbfe;
+  color: #172554;
+}
+
+@media (max-width: 380px) {
+  .mobile-nav {
+    inset-inline: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 button,

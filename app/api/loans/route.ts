@@ -26,6 +26,7 @@ export async function GET() {
         id: l.id,
         clientId: l.clientId,
         principal: l.principal,
+        reengagedCapital: l.reengagedCapital,
         interestRate: l.interestRate,
         total: l.total,
         installments: l.installments,
@@ -52,7 +53,12 @@ export async function GET() {
     return NextResponse.json(state);
   } catch (error) {
     console.error("[GET /api/loans]", error);
-    return NextResponse.json({ clients: [], loans: [], payments: [], sans: [], sanClients: [], sanPayments: [] });
+    // Nunca representar un fallo de base de datos como un sistema vacío: el
+    // cliente sincroniza el estado recibido y podría borrar información real.
+    return NextResponse.json(
+      { error: "No se pudo leer la información. Intenta nuevamente." },
+      { status: 500 },
+    );
   }
 }
 
@@ -119,6 +125,7 @@ export async function POST(request: Request) {
           id: l.id,
           clientId: l.clientId,
           principal: l.principal,
+          reengagedCapital: l.reengagedCapital || 0,
           interestRate: l.interestRate,
           total: l.total,
           installments: l.installments,
@@ -128,6 +135,7 @@ export async function POST(request: Request) {
         },
         update: {
           principal: l.principal,
+          reengagedCapital: l.reengagedCapital || 0,
           interestRate: l.interestRate,
           total: l.total,
           installments: l.installments,

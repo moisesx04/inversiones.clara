@@ -15,11 +15,14 @@ import {
   Menu,
   MessageCircle,
   Plus,
+  FileText,
+  Pencil,
   Printer,
   Search,
   Send,
   Settings,
   TrendingUp,
+  Trash2,
   Upload,
   UserPlus,
   Users,
@@ -730,9 +733,9 @@ export default function Home() {
     }
   }
 
-  function loanBreakdown(loanId: string) {
+  function loanBreakdown(loanId: string, excludePaymentId?: string) {
     const loan = findLoan(loanId);
-    const paidPayments = state.payments.filter((payment) => payment.loanId === loanId && payment.paid);
+    const paidPayments = state.payments.filter((payment) => payment.loanId === loanId && payment.paid && payment.id !== excludePaymentId);
     const paidInterest = sum(paidPayments.map((payment) => payment.paidInterest || 0));
     const paidCapital = sum(paidPayments.map((payment) => payment.paidCapital || 0));
     return {
@@ -746,9 +749,9 @@ export default function Home() {
   function openPaymentDialog(id: string) {
     const payment = state.payments.find((p) => p.id === id);
     if (payment) {
-      setPaymentMode("interest");
-      setCustomInterest(String(payment.amount));
-      setCustomCapital("0");
+      setPaymentMode(payment.paidMode || "interest");
+      setCustomInterest(String(payment.paid ? payment.paidInterest || 0 : payment.amount));
+      setCustomCapital(String(payment.paidCapital || 0));
     }
     setSelectedPaymentId(id);
   }
@@ -759,7 +762,8 @@ export default function Home() {
     const loan = state.loans.find((l) => l.id === payment.loanId);
     if (!loan) return;
 
-    const breakdown = loanBreakdown(loan.id);
+    const editingPaidPayment = payment.paid;
+    const breakdown = loanBreakdown(loan.id, editingPaidPayment ? payment.id : undefined);
     let paidInterest = 0;
     let paidCapital = 0;
 
@@ -783,7 +787,7 @@ export default function Home() {
         : p
     );
 
-    if (remainingCapitalAfterPayment > 0) {
+    if (!editingPaidPayment && remainingCapitalAfterPayment > 0) {
       let ratePerPeriod = loan.interestRate;
       if (loan.frequency === "weekly") ratePerPeriod = loan.interestRate / 4;
       else if (loan.frequency === "biweekly") ratePerPeriod = loan.interestRate / 2;
@@ -804,18 +808,37 @@ export default function Home() {
 
     setState((c) => ({ ...c, payments: newPayments }));
     setSelectedPaymentId("");
-    toast("Pago registrado", `Réditos: ${money(paidInterest)} · Capital: ${money(paidCapital)}.`, "success");
+    toast(editingPaidPayment ? "Pago modificado" : "Pago registrado", `Réditos: ${money(paidInterest)} · Capital: ${money(paidCapital)}.`, "success");
   }
 
-  function unmarkPayment(id: string) {
+  function deleteRecentPayment(id: string) {
+    const payment = state.payments.find((item) => item.id === id);
+    if (!payment || !window.confirm("¿Eliminar este pago reciente? El pago volverá a quedar pendiente.")) return;
     setState((c) => ({
       ...c,
-      payments: c.payments.map((p) =>
-        p.id === id
-          ? { ...p, paid: false, paidAt: "", paidMode: undefined, paidInterest: undefined, paidCapital: undefined }
-          : p,
-      ),
+      payments: c.payments
+        .filter((item) => !(item.loanId === payment.loanId && item.number === payment.number + 1 && !item.paid))
+        .map((item) => item.id === id
+          ? { ...item, paid: false, paidAt: "", paidMode: undefined, paidInterest: undefined, paidCapital: undefined }
+          : item),
     }));
+    toast("Pago eliminado", "El pago volvió a quedar pendiente y los saldos fueron recalculados.", "success");
+  }
+
+  function paymentReceiptLink(payment: Payment) {
+    return `/api/payment-receipt/${payment.id}`;
+  }
+
+  function sendPaymentReceipt(payment: Payment, client: Client) {
+    const phone = whatsappPhone(client.phone);
+    if (phone.length < 7) {
+      toast("Teléfono inválido", "Corrige el teléfono del cliente antes de enviar el recibo.", "error");
+      return;
+    }
+    const total = (payment.paidInterest || 0) + (payment.paidCapital || 0);
+    const receiptUrl = `${window.location.origin}${paymentReceiptLink(payment)}`;
+    const message = `Hola ${client.name}, te compartimos tu recibo de pago por ${money(total)}.\n\nPuedes verlo y descargarlo aquí: ${receiptUrl}`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   }
 
   function deleteLoan(id: string) {
@@ -1745,13 +1768,20 @@ export default function Home() {
                                     <CheckCircle2 className="h-4 w-4" /> Registrar pago
                                   </Button>
                                 ) : (
-                                  <Button
-                                    variant="outline"
-                                    className="flex-1 h-10 rounded-xl text-sm font-semibold text-slate-500"
-                                    onClick={() => unmarkPayment(payment.id)}
-                                  >
-                                    Desmarcar
-                                  </Button>
+                                  <div className="flex flex-1 flex-wrap gap-2">
+                                    <Button variant="outline" size="sm" className="h-10 flex-1 rounded-xl gap-1.5" onClick={() => window.open(paymentReceiptLink(payment), "_blank")}>
+                                      <FileText className="h-4 w-4" /> Recibo
+                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl text-blue-600" onClick={() => sendPaymentReceipt(payment, client)} aria-label="Enviar recibo">
+                                      <Send className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl text-amber-600" onClick={() => openPaymentDialog(payment.id)} aria-label="Modificar pago">
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl text-red-600" onClick={() => deleteRecentPayment(payment.id)} aria-label="Eliminar pago">
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 )}
                                 <Button asChild variant="outline" size="icon" className="h-10 w-10 rounded-xl flex-shrink-0">
                                   <a href={reminderLink(client)} target="_blank" rel="noreferrer" aria-label="Avisar">
@@ -2200,7 +2230,7 @@ export default function Home() {
           const payment = state.payments.find((p) => p.id === selectedPaymentId);
           const loan    = payment ? findLoan(payment.loanId) : null;
           const client  = loan ? findClient(loan.clientId) : null;
-          const breakdown = payment ? loanBreakdown(payment.loanId) : null;
+          const breakdown = payment ? loanBreakdown(payment.loanId, payment.paid ? payment.id : undefined) : null;
           const paidInterestVal = Number(customInterest) || 0;
           const paidCapitalVal  = Number(customCapital) || 0;
           return (
@@ -2220,7 +2250,7 @@ export default function Home() {
               >
                 <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
                   <div>
-                    <h2 className="text-xl font-extrabold text-slate-900">Registrar pago</h2>
+                    <h2 className="text-xl font-extrabold text-slate-900">{payment?.paid ? "Modificar pago" : "Registrar pago"}</h2>
                     <p className="text-sm text-slate-500 mt-0.5">{client?.name || "Cliente"} · Cuota #{payment?.number}</p>
                   </div>
                   <button type="button" onClick={() => setSelectedPaymentId("")} className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
@@ -2299,7 +2329,7 @@ export default function Home() {
                     </Button>
                     <Button type="button" className="flex-1 h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-lg shadow-emerald-200" onClick={confirmPayment}>
                       <CheckCircle2 className="h-5 w-5" />
-                      Confirmar pago
+                      {payment?.paid ? "Guardar cambios" : "Confirmar pago"}
                     </Button>
                   </div>
                 </div>

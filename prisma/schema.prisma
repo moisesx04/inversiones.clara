@@ -47,6 +47,7 @@ model Payment {
   amount  Float
   paid         Boolean @default(false)
   paidAt       String  @default("")
+  paidMode     String?
   paidInterest Float?
   paidCapital  Float?
   loan         Loan    @relation(fields: [loanId], references: [id], onDelete: Cascade)

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { StoreState } from "@/lib/types";
+import { Payment, StoreState } from "@/lib/types";
 
 export async function GET() {
   try {
@@ -42,6 +42,7 @@ export async function GET() {
         amount: p.amount,
         paid: p.paid,
         paidAt: p.paidAt,
+        paidMode: p.paidMode as Payment["paidMode"],
         paidInterest: p.paidInterest ?? undefined,
         paidCapital: p.paidCapital ?? undefined,
       })),
@@ -167,10 +168,16 @@ export async function POST(request: Request) {
           amount: p.amount,
           paid: p.paid,
           paidAt: p.paidAt,
+          paidMode: p.paidMode,
+          paidInterest: p.paidInterest,
+          paidCapital: p.paidCapital,
         },
         update: {
           paid: p.paid,
           paidAt: p.paidAt,
+          paidMode: p.paidMode,
+          paidInterest: p.paidInterest,
+          paidCapital: p.paidCapital,
           amount: p.amount,
           dueDate: p.dueDate,
         },
